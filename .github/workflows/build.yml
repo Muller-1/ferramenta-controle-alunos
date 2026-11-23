@@ -38,7 +38,10 @@ jobs:
           test -x /usr/lib/lab-painel/labpainel/pcs/lab-ferramentas-mint.sh
           bash -n /usr/lib/lab-painel/labpainel/pcs/lab-ferramentas-mint.sh
           sudo apt-get install -y xvfb
-          LAB_PAINEL_DEMO=1 LAB_PAINEL_CONFIG="$RUNNER_TEMP/c.json" xvfb-run -a timeout 6 lab-painel; test $? -eq 124
+          # o painel deve ficar aberto até o timeout (124); qualquer outro código = quebrou
+          rc=0
+          LAB_PAINEL_DEMO=1 LAB_PAINEL_CONFIG="$RUNNER_TEMP/c.json" xvfb-run -a timeout 6 lab-painel || rc=$?
+          test "$rc" -eq 124
       - uses: actions/upload-artifact@v4
         with:
           name: deb
