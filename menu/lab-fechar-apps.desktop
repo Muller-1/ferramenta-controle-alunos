@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Fechar apps em todos
+Comment=Fecha tudo e deixa na área de trabalho em todos os PCs
+Exec=__HOME__/.local/bin/lab-gui fechar-apps
+Icon=window-close
+Terminal=false
+Categories=X-Laboratorio;

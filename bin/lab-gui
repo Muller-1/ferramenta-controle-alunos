@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# lab-gui <ação>: pede confirmação e roda "lab <ação> todos" mostrando o resultado (atalhos do menu Personalizado)
+a="${1:?ação}"
+case "$a" in
+  backup) txt="Fazer o backup dos trabalhos dos alunos agora?" ;;
+  status) txt="" ;;
+  *) txt="Executar '$a' em TODOS os computadores do laboratório?" ;;
+esac
+[[ -z "$txt" ]] || kdialog --title "Laboratório" --yesno "$txt" || exit 0
+if [[ "$a" == backup ]]; then out="$("$HOME/.local/bin/lab-backup" 2>&1 | tail -25)"; else out="$("$HOME/.local/bin/lab" "$a" todos 2>&1)"; fi
+kdialog --title "Laboratório: $a" --msgbox "$out"

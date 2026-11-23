@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Reiniciar Veyon em todos
+Comment=Reinicia só o Veyon em todos os PCs para as telas voltarem a aparecer
+Exec=__HOME__/.local/bin/lab-gui reiniciar-veyon
+Icon=view-refresh-symbolic
+Terminal=false
+Categories=X-Laboratorio;

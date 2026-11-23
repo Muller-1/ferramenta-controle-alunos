@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Liberar tela em todos
+Comment=Tira o aviso e libera teclado e mouse em todos os PCs
+Exec=__HOME__/.local/bin/lab-gui liberar-tela
+Icon=system-lock-screen
+Terminal=false
+Categories=X-Laboratorio;

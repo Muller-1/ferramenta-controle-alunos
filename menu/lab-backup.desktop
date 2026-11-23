@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Backup dos trabalhos agora
+Comment=Copia os trabalhos dos alunos para o Bazzite
+Exec=__HOME__/.local/bin/lab-gui backup
+Icon=document-save
+Terminal=false
+Categories=X-Laboratorio;

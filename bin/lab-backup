@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# backup-lab.sh — copia os trabalhos dos alunos (de cada PC do lab) para o Bazzite.
+# Leve de propósito, para não atrapalhar as crianças:
+#   - copia só pastas de trabalho (Documentos, Imagens, Downloads, Desktop...), nunca cache nem Roblox;
+#   - arquivos > 200 MB são ignorados; velocidade limitada a ~2 MB/s por PC;
+#   - no PC do aluno o rsync roda com prioridade mínima de CPU e de disco (nice 19, ionice ocioso);
+#   - uma máquina por vez.
+# Destino: ~/Backups-Lab/<pc>/ (cópia atual) e ~/Backups-Lab/<pc>/_apagados/<data>/ (o que mudou/sumiu).
+# Do a1 também copia a pasta compartilhada trabalhos-alunos.
+LISTA="$HOME/.ssh/ips-lab-testados.txt"
+CHAVE="$HOME/.ssh/lab_nopass_ed25519"
+DEST="${LAB_BACKUP_DIR:-$HOME/Backups-Lab}"
+HOJE="$(date +%F)"
+LOG="$DEST/backup.log"
+mkdir -p "$DEST"
+SSHCMD="ssh -F /dev/null -i $CHAVE -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8"
+RS=(rsync -a --partial --bwlimit=2000 --max-size=200M --timeout=60 -e "$SSHCMD"
+    --rsync-path="nice -n 19 ionice -c3 rsync")
+ok=0; falha=0; fora=0
+echo "=== backup $(date '+%F %T') ===" >> "$LOG"
+while read -r n ip; do
+  d="$DEST/$n"; mkdir -p "$d"
+  if ! $SSHCMD "$n@$ip" true </dev/null 2>/dev/null; then echo "$n: desligado/sem acesso (pulado)" | tee -a "$LOG"; fora=$((fora+1)); continue; fi
+  if "${RS[@]}" --backup --backup-dir="$d/_apagados/$HOJE" \
+       --include='/Documentos/***' --include='/Documents/***' --include='/Imagens/***' --include='/Downloads/***' \
+       --include='/Desktop/***' --include='/Área de trabalho/***' --include='/Músicas/***' --include='/Vídeos/***' \
+       --include='/Modelos/***' --include='/Público/***' --exclude='*' \
+       "$n@$ip:/home/aluno/" "$d/" </dev/null >> "$LOG" 2>&1; then ok=$((ok+1)); echo "$n: ok"
+  else echo "$n: FALHOU (veja $LOG)"; falha=$((falha+1)); fi
+  if [[ "$n" == "a1" ]]; then
+    mkdir -p "$DEST/trabalhos-alunos"
+    "${RS[@]}" --backup --backup-dir="$DEST/trabalhos-alunos/_apagados/$HOJE" --exclude='.lixeira' \
+      "a1@$ip:/srv/trabalhos-alunos/dados/" "$DEST/trabalhos-alunos/" </dev/null >> "$LOG" 2>&1 \
+      && echo "trabalhos-alunos (a1): ok" || echo "trabalhos-alunos: FALHOU"
+  fi
+done < <(grep -E '^[a-f][0-9]+: +[0-9.]+' "$LISTA" | sed -E 's/^([a-f][0-9]+): +([0-9.]+).*/\1 \2/')
+# apaga cópias de "apagados" com mais de 30 dias
+find "$DEST" -maxdepth 3 -type d -path '*/_apagados/*' -mtime +30 -prune -exec rm -rf {} + 2>/dev/null
+echo "resumo: $ok ok, $falha falhas, $fora fora do ar" | tee -a "$LOG"

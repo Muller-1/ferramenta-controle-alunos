@@ -1,0 +1,2 @@
+Chave SSH do laboratório: gere com ssh-keygen -t ed25519 -f ~/.ssh/lab_nopass_ed25519 e instale a pública em cada PC.
+NUNCA publique a chave privada.

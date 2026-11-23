@@ -1,0 +1,4 @@
+# Exemplo: nome do PC: IP  (Nome-da-máquina). Troque pelos seus.
+a1: 192.168.0.101  (Info-A1)
+a2: 192.168.0.102  (Info-A2)
+b1: 192.168.0.103  (Info-B1)
