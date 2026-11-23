@@ -4,16 +4,18 @@
 # Ações: fechar-roblox | tirar-conta-roblox | fechar-apps | bloquear-input | liberar-input | travar-tela | liberar-tela | reiniciar | desligar | sair | entrar | estado | reiniciar-veyon
 #        status        mostra quais PCs estão no ar e quem está logado
 #   lab travar-tela [-m "mensagem"] [todos|a1 b2 ...]   cobre a tela com a mensagem e bloqueia teclado e mouse, sem fechar nem minimizar (sem -m, a padrão)
+#   lab abrir-app -a "nome do app" [todos|a1 b2 ...]    abre o app (primeiro resultado da busca) na tela dos alunos
 # Sem PCs informados = todos. Lista de PCs: ~/.ssh/ips-lab-testados.txt
 LISTA="$HOME/.ssh/ips-lab-testados.txt"
 CHAVE="$HOME/.ssh/lab_nopass_ed25519"
 LIB="/usr/local/lib/lab"
 ACAO="${1:-}"; shift || true
 MSG=""
-if [[ "${1:-}" == "-m" || "${1:-}" == "--mensagem" ]]; then MSG="${2:-}"; shift 2 || true; fi
-EXTRA=""; [[ "$ACAO" == travar-tela && -n "$MSG" ]] && EXTRA=" $(printf '%q' "$MSG")"
+if [[ "${1:-}" == "-m" || "${1:-}" == "--mensagem" || "${1:-}" == "-a" || "${1:-}" == "--app" ]]; then MSG="${2:-}"; shift 2 || true; fi
+if [[ "$ACAO" == abrir-app && -z "$MSG" ]]; then echo 'Diga o app: lab abrir-app -a "nome do app" [todos|a1 b2 ...]'; exit 1; fi
+EXTRA=""; [[ ( "$ACAO" == travar-tela || "$ACAO" == abrir-app ) && -n "$MSG" ]] && EXTRA=" $(printf '%q' "$MSG")"
 case "$ACAO" in
-  fechar-roblox|tirar-conta-roblox|fechar-apps|bloquear-input|liberar-input|travar-tela|liberar-tela|reiniciar|desligar|sair|entrar|estado|reiniciar-veyon|status) ;;
+  fechar-roblox|tirar-conta-roblox|fechar-apps|bloquear-input|liberar-input|travar-tela|liberar-tela|reiniciar|desligar|sair|entrar|estado|reiniciar-veyon|abrir-app|status) ;;
   *) sed -n '2,7p' "$0"; exit 1 ;;
 esac
 # nome: ip

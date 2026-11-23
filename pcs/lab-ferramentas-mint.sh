@@ -12,6 +12,7 @@
 #   reiniciar | desligar   reinicia/desliga o PC (daqui a 3 s)
 #   sair | entrar       aluno sai (sem login automático por 60 min) / aluno entra de novo
 #   estado              uma linha com o estado do PC (usada pelo painel)
+#   abrir-app NOME      abre um aplicativo pelo nome (primeiro resultado da busca nos aplicativos instalados)
 #   reiniciar-veyon     reinicia só o Veyon (limpa x11vnc preso) para as telas voltarem a aparecer
 # Todos funcionam de três jeitos:
 #   a) pelo SSH do professor:  lab <acao> [todos|a1 b2 ...]   (comando "lab" do Bazzite)
@@ -25,7 +26,7 @@ trap 'echo "  [ERRO] falhou na linha $LINENO: $BASH_COMMAND (código $?)" >&2' E
 ALUNO="aluno"
 LIB="/usr/local/lib/lab"
 SUDOERS="/etc/sudoers.d/lab-comandos"
-CMDS=(fechar-roblox tirar-conta-roblox fechar-apps bloquear-input liberar-input travar-tela liberar-tela reiniciar desligar sair entrar estado reiniciar-veyon)
+CMDS=(fechar-roblox tirar-conta-roblox fechar-apps bloquear-input liberar-input travar-tela liberar-tela reiniciar desligar sair entrar estado reiniciar-veyon abrir-app)
 ok()   { echo "  [ok] $*"; }
 info() { echo "==> $*"; }
 
@@ -34,12 +35,12 @@ echo "Máquina: $(hostname)"
 
 if [[ "${1:-}" == "--desfazer" ]]; then
   rm -f "$SUDOERS"
-  for c in "${CMDS[@]}" _comum overlay-tela.py; do chattr -i "$LIB/$c" 2>/dev/null || true; rm -f "$LIB/$c"; done
+  for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chattr -i "$LIB/$c" 2>/dev/null || true; rm -f "$LIB/$c"; done
   ok "ferramentas e sudoers removidos"; exit 0
 fi
 
 install -d -m 755 "$LIB"
-for c in "${CMDS[@]}" _comum overlay-tela.py; do chattr -i "$LIB/$c" 2>/dev/null || true; done
+for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chattr -i "$LIB/$c" 2>/dev/null || true; done
 
 # ------------------------------------------------------------------- comum -----
 cat > "$LIB/_comum" <<'EOF'
@@ -48,7 +49,8 @@ cat > "$LIB/_comum" <<'EOF'
 ALUNO="aluno"
 if [[ $EUID -eq 0 ]]; then
   U="$(id -u "$ALUNO")"
-  exec runuser -u "$ALUNO" -- env DISPLAY="${DISPLAY:-:0}" XAUTHORITY="/home/$ALUNO/.Xauthority" \
+  cd "/home/$ALUNO" 2>/dev/null || cd /      # o aluno não consegue entrar na pasta do admin (diretório atual do SSH)
+  exec runuser -u "$ALUNO" -- env HOME="/home/$ALUNO" USER="$ALUNO" LOGNAME="$ALUNO" DISPLAY="${DISPLAY:-:0}" XAUTHORITY="/home/$ALUNO/.Xauthority" \
        XDG_RUNTIME_DIR="/run/user/$U" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$U/bus" "$0" "$@"
 fi
 export DISPLAY="${DISPLAY:-:0}" XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
@@ -296,6 +298,106 @@ tr=0; ip=0
 echo "estado=$est tela=${tela:--} travada=$tr input=$ip"
 EOF
 
+# ---------------------------------------------------------------------- abrir-app
+cat > "$LIB/abrir-app.py" <<'EOF'
+#!/usr/bin/env python3
+# abrir-app.py [--listar] NOME...: procura nos aplicativos instalados e abre o melhor resultado na sessão do aluno.
+# Ordem: nome igual > começa com > palavras no nome > contém no nome > id/arquivo > nome+palavras-chave > comando.
+import sys, os, re, glob, socket, subprocess, unicodedata, configparser
+
+def norm(s):
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return " ".join(re.findall(r"[a-z0-9]+", s))
+
+HOME = "/home/aluno"
+DIRS = ["/usr/share/applications", "/usr/local/share/applications", "/var/lib/flatpak/exports/share/applications",
+        HOME + "/.local/share/applications", HOME + "/.local/share/flatpak/exports/share/applications"]
+
+def ler(caminho):
+    cp = configparser.RawConfigParser(strict=False, interpolation=None)
+    try:
+        cp.read(caminho, encoding="utf-8")
+        d = dict(cp["Desktop Entry"])
+    except Exception:
+        return None
+    if d.get("type") != "Application" or d.get("hidden", "").lower() == "true" or not d.get("name"):
+        return None
+    nomes = [d.get("name", "")] + [v for k, v in d.items() if k.startswith("name[")]
+    return {"path": caminho, "id": os.path.basename(caminho)[:-8], "nome": d["name"], "nomes": [norm(n) for n in nomes if n],
+            "generico": norm(d.get("genericname", "")), "chaves": norm(d.get("keywords", "") + " " + d.get("comment", "")),
+            "exec": norm(re.sub(r"%[a-zA-Z]", "", d.get("exec", ""))), "cats": d.get("categories", ""), "oculto": d.get("nodisplay", "").lower() == "true"}
+
+ALIAS = {   # nomes em português / apelidos comuns -> o que procurar
+    "planilha": "libreoffice calc", "excel": "libreoffice calc", "texto": "libreoffice writer", "documento": "libreoffice writer",
+    "word": "libreoffice writer", "apresentacao": "libreoffice impress", "slides": "libreoffice impress", "powerpoint": "libreoffice impress",
+    "desenho": "libreoffice draw", "roblox": "sober", "internet": "brave", "navegador": "brave", "chrome": "brave", "calculadora": "calculator",
+    "bloco de notas": "text editor", "editor de texto": "text editor", "gerenciador de arquivos": "files", "terminal": "terminal",
+}
+
+def pontos(q, e):
+    toks = q.split()
+    melhor = 0
+    for n in e["nomes"]:
+        if n == q: melhor = max(melhor, 1000)
+        elif all(t in n.split() for t in toks): melhor = max(melhor, 900)      # palavras inteiras (ex.: "calc" em "LibreOffice Calc")
+        elif n.startswith(q): melhor = max(melhor, 800)
+        elif q in n: melhor = max(melhor, 650)
+        elif all(t in n for t in toks): melhor = max(melhor, 600)
+    if melhor == 0:
+        idn = norm(e["id"])
+        if q in idn or all(t in idn for t in toks): melhor = 500
+        elif all(t in (e["nomes"][0] + " " + e["generico"] + " " + e["chaves"]) for t in toks): melhor = 400
+        elif q in e["exec"] or all(t in e["exec"] for t in toks): melhor = 300
+    if melhor:
+        cats = set(c.lower() for c in e["cats"].split(";") if c)
+        if cats & {"office", "webbrowser", "game", "education", "graphics", "audiovideo", "network"}: melhor += 60   # apps do dia a dia
+        if cats & {"settings", "system", "packagemanager", "hardwaresettings", "monitor"}: melhor -= 60              # ferramentas de sistema
+        if e["oculto"]: melhor -= 150                                                                              # escondidos do menu só se não houver outro
+    return melhor
+
+def main():
+    args = sys.argv[1:]
+    listar = bool(args) and args[0] == "--listar"
+    if listar: args = args[1:]
+    q = norm(" ".join(args)); q = ALIAS.get(q, q)
+    if not q:
+        print("%s: diga o nome do app (ex.: calc, writer, brave, sober)" % socket.gethostname()); return 2
+    vistos, achados = set(), []
+    for d in DIRS:
+        for c in sorted(glob.glob(d + "/*.desktop")):
+            e = ler(c)
+            if not e or e["id"] in vistos: continue
+            vistos.add(e["id"]); s = pontos(q, e)
+            if s: achados.append((s, -len(e["nome"]), e))
+    if not achados:
+        print("%s: nenhum aplicativo encontrado para '%s'" % (socket.gethostname(), " ".join(args))); return 1
+    achados.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    unicos, nomes_vistos = [], set()
+    for a in achados:
+        if a[2]["nome"].lower() in nomes_vistos: continue
+        nomes_vistos.add(a[2]["nome"].lower()); unicos.append(a)
+    achados = unicos
+    top = achados[0][2]
+    outros = ", ".join(a[2]["nome"] for a in achados[1:4])
+    if listar:
+        for s, _l, e in achados[:8]: print("%4d  %s  (%s)" % (s, e["nome"], e["id"]))
+        return 0
+    subprocess.Popen(["gio", "launch", top["path"]], start_new_session=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print("%s: abriu «%s»%s" % (socket.gethostname(), top["nome"], ("  (outros parecidos: %s)" % outros) if outros else ""))
+    return 0
+
+sys.exit(main())
+EOF
+
+# abrir-app: entra como o aluno (variáveis da sessão) e roda o python
+cat > "$LIB/abrir-app" <<'EOF'
+#!/usr/bin/env bash
+# abrir-app NOME...: abre o aplicativo (primeiro resultado da busca) na tela do aluno. --listar NOME mostra os candidatos.
+source "$(dirname "$(readlink -f "$0")")/_comum"
+exec python3 "$(dirname "$(readlink -f "$0")")/abrir-app.py" "$@"
+EOF
+
 # ------------------------------------------------------------------ reiniciar-veyon
 cat > "$LIB/reiniciar-veyon" <<'EOF'
 #!/usr/bin/env bash
@@ -316,20 +418,20 @@ fi
 EOF
 
 for c in "${CMDS[@]}"; do chmod 755 "$LIB/$c"; done
-chmod 644 "$LIB/_comum"; chmod 755 "$LIB/overlay-tela.py"
-for c in "${CMDS[@]}" _comum overlay-tela.py; do chown root:root "$LIB/$c"; done
+chmod 644 "$LIB/_comum"; chmod 755 "$LIB/overlay-tela.py" "$LIB/abrir-app.py"
+for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chown root:root "$LIB/$c"; done
 
 # --------------------------------------------------------------------- sudoers
 {
   echo "# Gerado por lab-ferramentas-mint.sh: admins rodam SÓ estas ferramentas sem senha, sem argumentos."
   for c in "${CMDS[@]}"; do
-    if [[ "$c" == travar-tela ]]; then echo "%sudo ALL=(root) NOPASSWD: $LIB/$c"; else echo "%sudo ALL=(root) NOPASSWD: $LIB/$c \"\""; fi
+    if [[ "$c" == travar-tela || "$c" == abrir-app ]]; then echo "%sudo ALL=(root) NOPASSWD: $LIB/$c"; else echo "%sudo ALL=(root) NOPASSWD: $LIB/$c \"\""; fi
   done
 } > "$SUDOERS"
 chmod 440 "$SUDOERS"
 visudo -cf "$SUDOERS" >/dev/null
 ok "sudoers: $SUDOERS (sem senha só para ${CMDS[*]})"
 
-for c in "${CMDS[@]}" _comum overlay-tela.py; do chattr +i "$LIB/$c"; done
+for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chattr +i "$LIB/$c"; done
 ok "ferramentas instaladas em $LIB (imutáveis)"
 echo "Uso no PC: sudo $LIB/fechar-apps   |   do Bazzite: lab fechar-apps todos"

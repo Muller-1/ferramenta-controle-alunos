@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Abrir aplicativo em todos
+Comment=Digita o nome de um app e abre (primeiro resultado da busca) na tela dos alunos
+Exec=__HOME__/.local/bin/lab-gui abrir-app
+Icon=system-search-symbolic
+Terminal=false
+Categories=X-Laboratorio;

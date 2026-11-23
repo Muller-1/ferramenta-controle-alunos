@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # lab-sistema-mint.sh — ajustes de sistema do laboratório (Linux Mint, XFCE/Cinnamon)
-#   1. Energia: NUNCA suspender/hibernar/desligar por inatividade (a tela pode apagar).
+#   1. Energia: NUNCA suspender/hibernar/desligar por inatividade (a tela pode apagar). Sem protetor de tela
+#      nem tela de bloqueio: o PC fica aberto exatamente onde o aluno deixou.
 #   2. Veyon: prioridade máxima de CPU/disco/memória e de rede, imutável para alunos.
 #   3. Vigia (a cada 1 min): religa o Veyon se cair e volta o login do aluno se a
 #      máquina ficar parada na tela de login.
@@ -42,6 +43,10 @@ if [[ "${1:-}" == "--desfazer" ]]; then
         "$LIB/vigia" "$LIB/rede-prioridade-veyon" "$LIB/libreoffice-autosave" \
         /etc/systemd/logind.conf.d/10-lab-energia.conf /etc/dconf/db/local.d/10-lab-energia /etc/dconf/db/local.d/locks/10-lab-energia
   chattr -i /etc/libreoffice/registry/lab-paths.xcd 2>/dev/null; rm -f /etc/libreoffice/registry/lab-paths.xcd
+  rm -f /etc/dconf/db/local.d/11-lab-sem-protetor /etc/dconf/db/local.d/locks/11-lab-sem-protetor /etc/xdg/autostart/lab-sem-protetor.desktop "$LIB/sem-protetor-xorg"
+  for b in /usr/bin/light-locker /usr/bin/light-locker-command /usr/bin/light-locker-settings /usr/bin/xflock4; do
+    if dpkg-statoverride --list "$b" >/dev/null 2>&1; then dpkg-statoverride --remove "$b"; chmod 755 "$b"; fi
+  done
   tc qdisc del dev "$(ip route show default | awk '/default/{print $5; exit}')" root 2>/dev/null || true
   systemctl unmask sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target >/dev/null 2>&1 || true
   systemctl daemon-reload; dconf update 2>/dev/null || true
@@ -110,6 +115,62 @@ PY
     done
   fi
   ok "XFCE: 'colocar o sistema para dormir' = nunca (padrão do sistema e sessão aberta)"
+fi
+
+# ------------------------------------------- 1c. sem protetor de tela e sem tela de bloqueio
+info "1c) Sem protetor de tela nem bloqueio (fica aberto onde deixou)"
+install -d -m 755 "$LIB"
+unlock "$LIB/sem-protetor-xorg" 2>/dev/null || true
+cat > "$LIB/sem-protetor-xorg" <<'EOF'
+#!/bin/sh
+# Desliga o protetor de tela e o apagar-por-X (xset s) na sessão. (O apagar da tela por energia é outro ajuste.)
+xset s off s noblank 2>/dev/null
+exit 0
+EOF
+chmod 755 "$LIB/sem-protetor-xorg"
+cat > /etc/xdg/autostart/lab-sem-protetor.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=Sem protetor de tela (lab)
+Exec=$LIB/sem-protetor-xorg
+NoDisplay=true
+EOF
+if (( $(id -u "$ALUNO" >/dev/null 2>&1; echo $?) == 0 )) && [[ -S "/run/user/$UID_ALUNO/bus" ]]; then
+  runuser -u "$ALUNO" -- env DISPLAY=:0 XAUTHORITY="/home/$ALUNO/.Xauthority" "$LIB/sem-protetor-xorg" || true
+fi
+if command -v cinnamon >/dev/null 2>&1; then
+  install -d -m 755 /etc/dconf/db/local.d /etc/dconf/db/local.d/locks
+  cat > /etc/dconf/db/local.d/11-lab-sem-protetor <<'EOF'
+[org/cinnamon/desktop/session]
+idle-delay=uint32 0
+
+[org/cinnamon/desktop/screensaver]
+idle-activation-enabled=false
+lock-enabled=false
+lock-delay=uint32 0
+
+[org/cinnamon/desktop/lockdown]
+disable-lock-screen=true
+EOF
+  printf '%s\n' /org/cinnamon/desktop/session/idle-delay /org/cinnamon/desktop/screensaver/idle-activation-enabled \
+    /org/cinnamon/desktop/screensaver/lock-enabled /org/cinnamon/desktop/screensaver/lock-delay \
+    /org/cinnamon/desktop/lockdown/disable-lock-screen > /etc/dconf/db/local.d/locks/11-lab-sem-protetor
+  dconf update
+  if [[ -S "/run/user/$UID_ALUNO/bus" ]]; then   # vale já na sessão aberta
+    D=/org/cinnamon/desktop
+    bus_dc() { runuser -u "$ALUNO" -- env DBUS_SESSION_BUS_ADDRESS="$BUS" dconf write "$@" 2>/dev/null || true; }
+    bus_dc $D/session/idle-delay "uint32 0"; bus_dc $D/screensaver/idle-activation-enabled false
+    bus_dc $D/screensaver/lock-enabled false; bus_dc $D/screensaver/lock-delay "uint32 0"; bus_dc $D/lockdown/disable-lock-screen true
+  fi
+  ok "Cinnamon: protetor de tela desligado (idle-delay 0), sem bloqueio automático nem manual (travado no dconf)"
+fi
+if command -v light-locker >/dev/null 2>&1 || command -v xflock4 >/dev/null 2>&1; then   # XFCE usa o light-locker
+  for b in /usr/bin/light-locker /usr/bin/light-locker-command /usr/bin/light-locker-settings /usr/bin/xflock4; do
+    [[ -x "$b" ]] || continue
+    dpkg-statoverride --list "$b" >/dev/null 2>&1 || dpkg-statoverride --update --add root sudo 750 "$b"
+  done
+  pkill -u "$ALUNO" -x light-locker 2>/dev/null || true
+  ok "XFCE: tela de bloqueio (light-locker/xflock4) só para admins; o aluno não bloqueia nem cai em tela de bloqueio"
 fi
 
 # ------------------------------------------------------------ 2. veyon prioridade

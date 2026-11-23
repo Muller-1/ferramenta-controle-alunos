@@ -48,6 +48,7 @@ CUSTOM = [
     ("liberar-input", "Liberar teclado e mouse", "input-mouse-symbolic", False, "Religa teclado e mouse"),
     ("travar-tela", "Travar tela", "changes-prevent-symbolic", True, "Cobre a tela com uma mensagem e bloqueia teclado e mouse (não fecha nem minimiza nada)"),
     ("liberar-tela", "Liberar tela", "changes-allow-symbolic", False, "Tira o aviso e libera teclado e mouse"),
+    ("abrir-app", "Abrir app…", "system-search-symbolic", False, "Abre um aplicativo pelo nome (primeiro resultado da busca) na tela dos alunos"),
     ("reiniciar-veyon", "Reiniciar Veyon", "view-refresh-symbolic", False, "Reinicia só o Veyon para as telas voltarem a aparecer no programa"),
 ]
 TODOS = {c[0]: c for c in BASICOS + CUSTOM}
@@ -187,6 +188,12 @@ class Painel(Gtk.Application):
         self._pintar_todos(); self._repintar_sel()
         if os.environ.get("LAB_PAINEL_DEMO") == "2":
             GLib.timeout_add(500, lambda: (self._elastico(70, 360, 540, 150), False)[1])
+        if os.environ.get("LAB_PAINEL_DEMO") == "4":
+            try:
+                self._dialogo_texto("Abrir aplicativo", "teste", lambda n: print("NOME:", repr(n)))
+                print("DEMO4: diálogo de texto abriu sem erro")
+            except Exception as e:
+                print("DEMO4 ERRO:", repr(e))
         if os.environ.get("LAB_PAINEL_DEMO") == "3":
             try:
                 self._dialogo_mensagem("TODOS os 18 computadores", lambda m: print("MSG:", repr(m)))
@@ -434,6 +441,10 @@ class Painel(Gtk.Application):
         if not alvos_on:
             self._status("Nenhum dos PCs escolhidos está ligado."); return
         _id, texto, _i, confirma, dica = TODOS[cid]
+        if cid == "abrir-app":
+            esc = f"TODOS os {len(alvos_on)} computadores ligados" if todos else f"{len(alvos_on)} computador(es): " + ", ".join(p.nome.upper() for p in alvos_on)
+            return self._dialogo_texto("Abrir aplicativo", f"Nome do aplicativo para abrir em {esc}\n(ex.: writer, calc, brave, sober; abre o primeiro resultado da busca):",
+                                       lambda nome: self._rodar(cid, texto, alvos_on, pulados, nome) if nome else None)
         if cid == "travar-tela":
             esc = f"TODOS os {len(alvos_on)} computadores ligados" if todos else f"{len(alvos_on)} computador(es): " + ", ".join(p.nome.upper() for p in alvos_on)
             return self._dialogo_mensagem(esc, lambda msg: self._rodar(cid, texto, alvos_on, pulados, msg))
@@ -442,6 +453,22 @@ class Painel(Gtk.Application):
             self._confirmar(f"{texto}?", f"{dica}\n\nVai rodar em {escopo}.", lambda: self._rodar(cid, texto, alvos_on, pulados))
         else:
             self._rodar(cid, texto, alvos_on, pulados)
+
+    def _dialogo_texto(self, titulo, pergunta, ok):
+        """Pede uma linha de texto (ex.: nome do app). Enter confirma."""
+        d = Gtk.Window(title=titulo, transient_for=self.win, modal=True)
+        d.set_default_size(460, 170)
+        caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
+        caixa.append(Gtk.Label(label=pergunta, xalign=0, wrap=True))
+        entrada = Gtk.Entry(); entrada.set_placeholder_text("nome do aplicativo"); caixa.append(entrada)
+        botoes = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        cancelar = Gtk.Button(label="Cancelar"); abrir = Gtk.Button(label="Abrir"); abrir.add_css_class("suggested-action")
+        botoes.append(cancelar); botoes.append(abrir); caixa.append(botoes)
+        cancelar.connect("clicked", lambda _b: d.close())
+        def confirmar(_w):
+            nome = entrada.get_text().strip(); d.close(); ok(nome)
+        abrir.connect("clicked", confirmar); entrada.connect("activate", confirmar)
+        d.set_child(caixa); d.present(); entrada.grab_focus()
 
     def _dialogo_mensagem(self, escopo, ok):
         """Pergunta a mensagem da tela travada. Em branco = mensagem padrão."""
