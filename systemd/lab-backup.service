@@ -1,8 +1,0 @@
-[Unit]
-Description=Backup dos trabalhos dos alunos (lab)
-ConditionACPower=true
-[Service]
-Type=oneshot
-Nice=19
-IOSchedulingClass=idle
-ExecStart=__HOME__/.local/bin/lab-backup

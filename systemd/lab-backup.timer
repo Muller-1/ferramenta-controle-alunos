@@ -1,8 +1,0 @@
-[Unit]
-Description=Backup dos trabalhos do lab a cada 2 horas (com o notebook na tomada)
-[Timer]
-OnCalendar=*-*-* 0/2:20:00
-Persistent=true
-RandomizedDelaySec=120
-[Install]
-WantedBy=timers.target

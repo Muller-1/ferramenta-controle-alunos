@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Painel do laboratório
-Comment=Controla os computadores do laboratório (parecido com o Veyon)
-Exec=__HOME__/.local/bin/lab-painel
-Icon=computer
-Terminal=false
-Categories=X-Laboratorio;

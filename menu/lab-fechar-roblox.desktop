@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Fechar Roblox em todos
-Comment=Fecha o Roblox em todos os PCs do lab
-Exec=__HOME__/.local/bin/lab-gui fechar-roblox
-Icon=applications-games
-Terminal=false
-Categories=X-Laboratorio;

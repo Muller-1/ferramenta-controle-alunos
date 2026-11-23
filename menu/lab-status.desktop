@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Ver quem está no ar
-Comment=Mostra os PCs ligados e quem está logado
-Exec=__HOME__/.local/bin/lab-gui status
-Icon=computer
-Terminal=false
-Categories=X-Laboratorio;

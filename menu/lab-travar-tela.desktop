@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Travar tela (fecha tudo) em todos
-Comment=Fecha tudo, cobre a tela e bloqueia teclado e mouse em todos os PCs
-Exec=__HOME__/.local/bin/lab-gui travar-tela
-Icon=system-lock-screen
-Terminal=false
-Categories=X-Laboratorio;
