@@ -1,5 +1,7 @@
+dist/
+build/
+*.spec
+__pycache__/
 *.cred
 *_ed25519
 *.pem
-macs.json.local
-__pycache__/

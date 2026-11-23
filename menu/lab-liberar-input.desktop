@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Liberar teclado e mouse em todos
-Comment=Religa teclado e mouse dos alunos
-Exec=__HOME__/.local/bin/lab-gui liberar-input
-Icon=input-mouse
-Terminal=false
-Categories=X-Laboratorio;

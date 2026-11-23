@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Tirar conta do Roblox em todos
-Comment=Fecha o Roblox e apaga o login em todos os PCs
-Exec=__HOME__/.local/bin/lab-gui tirar-conta-roblox
-Icon=user-trash
-Terminal=false
-Categories=X-Laboratorio;
