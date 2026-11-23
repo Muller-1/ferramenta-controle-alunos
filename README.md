@@ -40,7 +40,7 @@ Cada PC dos alunos precisa de: servidor SSH (`sudo apt install openssh-server`),
 
 Com os PCs ligados, use **Arquivo → Implantar ferramentas nos PCs…** (ou, no terminal do Mint, `lab implantar`).
 Será pedida a senha do `sudo` dos administradores; ela é enviada pelo SSH e **não é gravada**. O instalador
-(`labpainel/pcs/lab-ferramentas-mint.sh`) cria os comandos em `/usr/local/lib/lab`, protegidos contra alteração, com
+(`pcs/lab-ferramentas-mint.sh`) cria os comandos em `/usr/local/lib/lab`, protegidos contra alteração, com
 `sudo` sem senha **só** para eles. Pressupõe que a conta dos alunos se chama `aluno` e usa Cinnamon ou XFCE.
 
 ## Uso
@@ -52,7 +52,15 @@ Será pedida a senha do `sudo` dos administradores; ela é enviada pelo SSH e **
 - Teste sem PCs: `LAB_PAINEL_DEMO=1 lab-painel`.
 
 Comandos: `fechar-roblox`, `tirar-conta-roblox`, `fechar-apps`, `bloquear-input`, `liberar-input`, `travar-tela`
-(solta sozinho em 90 min), `liberar-tela`, `reiniciar`, `desligar`, `sair`, `entrar`, `reiniciar-veyon`.
+(cobre a tela com uma mensagem à sua escolha, sem fechar nem minimizar nada; solta sozinho em 90 min), `liberar-tela`,
+`abrir-app` (abre um aplicativo pelo nome na tela dos alunos), `reiniciar`, `desligar`, `sair`, `entrar`, `reiniciar-veyon`.
+No terminal: `lab travar-tela -m "Volto em 5 minutos"`, `lab abrir-app -a writer a1 b2`.
+
+## Estrutura do repositório
+- `labpainel/`: o painel e a linha de comando (Python + Tkinter).
+- `pcs/`: scripts que rodam **nos PCs dos alunos**, como administrador (`lab-ferramentas-mint.sh` é o que o painel implanta; os demais — energia/Veyon, aparência, travas, pasta pública — são opcionais e específicos de um laboratório Mint).
+- `packaging/`, `.github/workflows/`: geração do `.deb` e do `.exe`. `tests/`: testes.
+- Os IPs de exemplo (`192.168.0.x`) são fictícios: ajuste para a sua rede.
 
 ## Rodar do código-fonte / gerar os pacotes
 

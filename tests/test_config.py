@@ -44,5 +44,21 @@ class TestSsh(unittest.TestCase):
         self.assertNotIn("BatchMode=yes", core.ssh_base(cfg, automatico=False))
 
 
+class TestComando(unittest.TestCase):
+    def test_comando_remoto(self):
+        import shlex
+        cfg = config.carregar()
+        self.assertEqual(core.comando_remoto(cfg, "fechar-apps"), "sudo -n /usr/local/lib/lab/fechar-apps")
+        c = core.comando_remoto(cfg, "travar-tela", "Volto já\nNão mexam; \"nada\" $(rm -rf /)")
+        partes = shlex.split(c)
+        self.assertEqual(partes[:3], ["sudo", "-n", "/usr/local/lib/lab/travar-tela"])
+        # a quebra de linha vira "\n" literal e nada é interpretado pelo shell
+        self.assertEqual(partes[3], "Volto já\\nNão mexam; \"nada\" $(rm -rf /)")
+        self.assertEqual(len(partes), 4)
+
+    def test_script_das_pcs_existe(self):
+        self.assertTrue(os.path.exists(core.SCRIPT_PCS), core.SCRIPT_PCS)
+
+
 if __name__ == "__main__":
     unittest.main()

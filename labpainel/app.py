@@ -20,9 +20,10 @@ CUSTOM = [
     ("fechar-apps", "Fechar todos os apps", True, "Fecha tudo e mostra a área de trabalho"),
     ("bloquear-input", "Bloquear teclado e mouse", True, "Desliga teclado e mouse dos alunos"),
     ("liberar-input", "Liberar teclado e mouse", False, "Religa teclado e mouse"),
-    ("travar-tela", "Travar tela", True, "Fecha tudo, cobre a tela e bloqueia teclado e mouse"),
+    ("travar-tela", "Travar tela", True, "Cobre a tela com uma mensagem e bloqueia teclado e mouse (não fecha nem minimiza nada)"),
     ("liberar-tela", "Liberar tela", False, "Tira o aviso e libera teclado e mouse"),
     ("reiniciar-veyon", "Reiniciar Veyon", False, "Reinicia só o Veyon para as telas voltarem a aparecer"),
+    ("abrir-app", "Abrir app…", False, "Abre um aplicativo pelo nome (primeiro resultado da busca) na tela dos alunos"),
 ]
 TODOS = {c[0]: c for c in BASICOS + CUSTOM}
 
@@ -286,23 +287,32 @@ class Painel:
         _i, texto, confirma, dica = TODOS[cid]
         escopo = (f"TODOS os {len(alvos_on)} computadores ligados" if todos and not self.sel
                   else f"{len(alvos_on)} computador(es): " + ", ".join(p.nome.upper() for p in alvos_on))
+        if cid == "abrir-app":
+            return DialogoTexto(self.root, "Abrir aplicativo",
+                                f"Nome do aplicativo para abrir em {escopo}\n(ex.: writer, calc, firefox; abre o primeiro resultado da busca):",
+                                False, "Abrir", lambda nome: nome and self._rodar(cid, texto, alvos_on, pulados, nome))
+        if cid == "travar-tela":
+            return DialogoTexto(self.root, "Travar tela",
+                                f"Vai travar a tela de {escopo}.\nNada é fechado nem minimizado: a tela só fica coberta pela mensagem "
+                                "e teclado e mouse são bloqueados.\n\nMensagem para os alunos (em branco = mensagem padrão):",
+                                True, "Travar tela", lambda msg: self._rodar(cid, texto, alvos_on, pulados, msg))
         if confirma and not messagebox.askokcancel(f"{texto}?", f"{dica}\n\nVai rodar em {escopo}.", parent=self.root):
             return
         self._rodar(cid, texto, alvos_on, pulados)
 
-    def _rodar(self, cid, texto, alvos, pulados):
+    def _rodar(self, cid, texto, alvos, pulados, extra=""):
         self._log(f"▶ {texto}: {len(alvos)} PC(s)" + (f"  (ignorados, desligados: {', '.join(pulados)})" if pulados else ""))
         for p in alvos:
             self.ocupados.add(p.nome)
-            self.pool.submit(self._tarefa, cid, p)
+            self.pool.submit(self._tarefa, cid, p, extra)
         self._pintar_todos()
 
-    def _tarefa(self, cid, p):
+    def _tarefa(self, cid, p, extra=""):
         if self.demo:
             time.sleep(0.4)
             linha, ok = "(demonstração: nada foi enviado)", True
         else:
-            linha, ok = core.ssh_exec(self.cfg, p, f"sudo -n {self.cfg['pasta_ferramentas']}/{cid}")
+            linha, ok = core.ssh_exec(self.cfg, p, core.comando_remoto(self.cfg, cid, extra))
         p.t_estado = 0.0
         self.fila.put(("fim", p, linha, ok))
 
@@ -447,6 +457,38 @@ class Painel:
 
     def rodar(self):
         self.root.mainloop()
+
+
+class DialogoTexto:
+    """Pede um texto (nome do app ou mensagem da tela travada) e chama `ok(texto)` ao confirmar."""
+
+    def __init__(self, pai, titulo, pergunta, multilinha, rotulo_ok, ok):
+        self.ok = ok
+        self.multi = multilinha
+        self.w = tk.Toplevel(pai)
+        self.w.title(titulo)
+        self.w.transient(pai)
+        quadro = ttk.Frame(self.w, padding=12)
+        quadro.pack(fill="both", expand=True)
+        ttk.Label(quadro, text=pergunta, justify="left", wraplength=440).pack(anchor="w", pady=(0, 8))
+        if multilinha:
+            self.campo = tk.Text(quadro, width=52, height=6, wrap="word")
+        else:
+            self.campo = ttk.Entry(quadro, width=52)
+            self.campo.bind("<Return>", lambda e: self._confirmar())
+        self.campo.pack(fill="both", expand=True)
+        rod = ttk.Frame(quadro)
+        rod.pack(fill="x", pady=(10, 0))
+        ttk.Button(rod, text=rotulo_ok, command=self._confirmar).pack(side="right")
+        ttk.Button(rod, text="Cancelar", command=self.w.destroy).pack(side="right", padx=6)
+        self.w.bind("<Escape>", lambda e: self.w.destroy())
+        self.w.grab_set()
+        self.campo.focus_set()
+
+    def _confirmar(self):
+        texto = (self.campo.get("1.0", "end") if self.multi else self.campo.get()).strip()
+        self.w.destroy()
+        self.ok(texto)
 
 
 class DialogoConfig:

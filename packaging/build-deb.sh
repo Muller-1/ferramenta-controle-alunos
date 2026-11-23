@@ -9,7 +9,10 @@ PKG="$RAIZ/lab-painel_${VERSAO}_all"
 install -d "$PKG/DEBIAN" "$PKG/usr/lib/lab-painel" "$PKG/usr/bin" "$PKG/usr/share/applications" "$PKG/usr/share/doc/lab-painel"
 cp -r labpainel "$PKG/usr/lib/lab-painel/"
 find "$PKG/usr/lib/lab-painel" -name '__pycache__' -prune -exec rm -rf {} +
-chmod 755 "$PKG/usr/lib/lab-painel/labpainel/pcs/lab-ferramentas-mint.sh"
+# instalador das ferramentas nas PCs (fonte única: pcs/ na raiz) vai dentro do pacote; os demais scripts ficam em /usr/share
+install -d "$PKG/usr/lib/lab-painel/labpainel/pcs" "$PKG/usr/share/lab-painel/pcs"
+install -m 755 pcs/lab-ferramentas-mint.sh "$PKG/usr/lib/lab-painel/labpainel/pcs/"
+install -m 644 pcs/*.sh "$PKG/usr/share/lab-painel/pcs/"
 cp LICENSE README.md "$PKG/usr/share/doc/lab-painel/"
 
 cat > "$PKG/usr/bin/lab-painel" <<'EOF'

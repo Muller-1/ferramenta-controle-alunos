@@ -36,7 +36,7 @@ jobs:
           lab 2>&1 | head -3
           lab-painel lab | grep -q "uso: lab-painel"
           test -x /usr/lib/lab-painel/labpainel/pcs/lab-ferramentas-mint.sh
-          bash -n /usr/lib/lab-painel/labpainel/pcs/lab-ferramentas-mint.sh
+          for f in /usr/share/lab-painel/pcs/*.sh /usr/lib/lab-painel/labpainel/pcs/*.sh; do bash -n "$f"; done
           sudo apt-get install -y xvfb
           # o painel deve ficar aberto até o timeout (124); qualquer outro código = quebrou
           rc=0
@@ -57,7 +57,7 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install pyinstaller==6.11.1
       - name: Gerar o .exe
-        run: pyinstaller --onefile --windowed --name LabPainel --add-data "labpainel/pcs;labpainel/pcs" run_painel.py
+        run: pyinstaller --onefile --windowed --name LabPainel --add-data "pcs/lab-ferramentas-mint.sh;labpainel/pcs" run_painel.py
       - name: Abrir o programa por alguns segundos (teste de fumaça)
         shell: pwsh
         run: |

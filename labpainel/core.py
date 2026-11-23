@@ -1,5 +1,5 @@
 """Rede e SSH, sem interface gráfica (funciona igual no Windows e no Linux)."""
-import os, socket, subprocess, sys, tempfile
+import os, shlex, socket, subprocess, sys, tempfile
 
 WINDOWS = sys.platform.startswith("win")
 _SEM_JANELA = {"creationflags": 0x08000000} if WINDOWS else {}   # CREATE_NO_WINDOW
@@ -67,7 +67,25 @@ def enviar_wol(mac, broadcast):
             s.sendto(pacote, (broadcast, porta))
 
 
-SCRIPT_PCS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pcs", "lab-ferramentas-mint.sh")
+def _achar_script():
+    """Empacotado: labpainel/pcs/ (deb e .exe). Código-fonte: pcs/ na raiz do repositório."""
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    for pasta in (os.path.join(aqui, "pcs"), os.path.join(aqui, "..", "pcs")):
+        c = os.path.join(pasta, "lab-ferramentas-mint.sh")
+        if os.path.exists(c):
+            return os.path.normpath(c)
+    return os.path.join(aqui, "pcs", "lab-ferramentas-mint.sh")
+
+
+SCRIPT_PCS = _achar_script()
+
+
+def comando_remoto(cfg, acao, extra=""):
+    """Linha que o PC executa (sudo sem senha só para as ferramentas). `extra` = mensagem ou nome do app."""
+    cmd = f"sudo -n {cfg['pasta_ferramentas']}/{acao}"
+    if extra:
+        cmd += " " + shlex.quote(extra.replace("\r", "").replace("\n", "\\n"))
+    return cmd
 
 
 def implantar(cfg, pc, senha_sudo, timeout=150):
