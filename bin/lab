@@ -3,7 +3,7 @@
 #   lab <ação> [todos | a1 b2 c3 ...]
 # Ações: fechar-roblox | tirar-conta-roblox | fechar-apps | bloquear-input | liberar-input | travar-tela | liberar-tela | reiniciar | desligar | sair | entrar | estado | reiniciar-veyon
 #        status        mostra quais PCs estão no ar e quem está logado
-#   lab travar-tela [-m "mensagem"] [todos|a1 b2 ...]   minimiza os apps e cobre a tela com a mensagem (sem -m, a padrão)
+#   lab travar-tela [-m "mensagem"] [todos|a1 b2 ...]   cobre a tela com a mensagem e bloqueia teclado e mouse, sem fechar nem minimizar (sem -m, a padrão)
 # Sem PCs informados = todos. Lista de PCs: ~/.ssh/ips-lab-testados.txt
 LISTA="$HOME/.ssh/ips-lab-testados.txt"
 CHAVE="$HOME/.ssh/lab_nopass_ed25519"

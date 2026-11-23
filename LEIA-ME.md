@@ -10,7 +10,7 @@ Instalar tudo de novo: `bash instalar-no-bazzite.sh` (esta pasta).
 | `lab tirar-conta-roblox [...]` | fecha o Roblox e apaga o login |
 | `lab fechar-apps [...]` | fecha todos os programas e mostra a área de trabalho |
 | `lab bloquear-input` / `lab liberar-input [...]` | bloqueia/libera teclado e mouse |
-| `lab travar-tela [...]` | fecha tudo, cobre a tela com aviso e bloqueia teclado e mouse; solta sozinho em 90 min |
+| `lab travar-tela [-m "mensagem"] [...]` | cobre a tela com uma mensagem (padrão: "Tela bloqueada pelo professor") e bloqueia teclado e mouse; não fecha nem minimiza nada; solta sozinho em 90 min |
 | `lab reiniciar-veyon [...]` | reinicia só o Veyon (limpa x11vnc preso) para as telas voltarem a aparecer |
 | `lab liberar-tela [...]` | tira o aviso e libera |
 | `lab-backup` | copia os trabalhos dos alunos para `~/Backups-Lab` (também roda sozinho a cada 2 h na tomada) |

@@ -7,8 +7,8 @@
 #   fechar-apps         fecha TODOS os programas abertos e mostra a área de trabalho
 #   bloquear-input      desliga teclado e mouse/touchpad físicos (o Veyon continua mandando)
 #   liberar-input       religa teclado e mouse
-#   travar-tela [MENSAGEM]  minimiza os apps (não fecha), cobre a tela com uma mensagem e bloqueia teclado/mouse
-#   liberar-tela        tira o aviso, libera teclado/mouse e traz os apps de volta
+#   travar-tela [MENSAGEM]  cobre a tela com uma mensagem e bloqueia teclado/mouse (não fecha nem minimiza nada)
+#   liberar-tela        tira o aviso e libera teclado/mouse
 #   reiniciar | desligar   reinicia/desliga o PC (daqui a 3 s)
 #   sair | entrar       aluno sai (sem login automático por 60 min) / aluno entra de novo
 #   estado              uma linha com o estado do PC (usada pelo painel)
@@ -220,22 +220,22 @@ EOF
 # ------------------------------------------------------------------- travar-tela
 cat > "$LIB/travar-tela" <<'EOF'
 #!/usr/bin/env bash
-# travar-tela [MENSAGEM]: minimiza os apps (NÃO fecha nada), cobre a tela com uma mensagem por cima de tudo
-# e bloqueia teclado e mouse. Sem mensagem, usa a padrão ("Tela bloqueada pelo professor / Aguarde, por favor").
+# travar-tela [MENSAGEM]: cobre a tela com uma mensagem por cima de tudo e bloqueia teclado e mouse.
+# NÃO fecha nem minimiza nada: os apps continuam como estão por baixo (e rodando); só não aparecem nem respondem.
+# Sem mensagem, usa a padrão ("Tela bloqueada pelo professor / Aguarde, por favor").
 # Use \n na mensagem para quebrar linha. Libera com: liberar-tela. Segurança: solta sozinho em 90 minutos.
 source "$(dirname "$(readlink -f "$0")")/_comum"
 LIBDIR="$(dirname "$(readlink -f "$0")")"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 FLAG="$RUN/lab-tela-travada"
 MSG="$(printf '%s' "${1:-}" | tr -d '\000-\010\013\014\016-\037' | cut -c1-400)"
-command -v wmctrl >/dev/null && wmctrl -k on 2>/dev/null     # mostra a área de trabalho: todos os apps ficam minimizados
 touch "$FLAG"
 pkill -u "$(id -u)" -f '[o]verlay-tela.py' 2>/dev/null || true   # trocar a mensagem de uma tela já travada
 sleep 0.5
 setsid nohup python3 "$LIBDIR/overlay-tela.py" "$FLAG" "$MSG" >/dev/null 2>&1 < /dev/null &
 sleep 1
 "$LIBDIR/bloquear-input" >/dev/null 2>&1
-echo "$(hostname): tela travada (apps minimizados, mensagem na tela, teclado e mouse bloqueados)"
+echo "$(hostname): tela travada (mensagem na tela, teclado e mouse bloqueados; apps intactos por baixo)"
 EOF
 
 # ------------------------------------------------------------------ liberar-tela
@@ -249,7 +249,6 @@ rm -f "$RUN/lab-tela-travada"
 "$LIBDIR/liberar-input" >/dev/null 2>&1
 sleep 1
 pkill -u "$(id -u)" -f '[o]verlay-tela.py' 2>/dev/null || true
-command -v wmctrl >/dev/null && wmctrl -k off 2>/dev/null     # traz de volta os apps minimizados
 echo "$(hostname): tela liberada"
 EOF
 

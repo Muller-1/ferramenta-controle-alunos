@@ -46,7 +46,7 @@ CUSTOM = [
     ("fechar-apps", "Fechar todos os apps", "window-close-symbolic", True, "Fecha tudo e mostra a área de trabalho"),
     ("bloquear-input", "Bloquear teclado e mouse", "input-keyboard-symbolic", True, "Desliga teclado e mouse dos alunos"),
     ("liberar-input", "Liberar teclado e mouse", "input-mouse-symbolic", False, "Religa teclado e mouse"),
-    ("travar-tela", "Travar tela", "changes-prevent-symbolic", True, "Minimiza os apps, cobre a tela com uma mensagem e bloqueia teclado e mouse"),
+    ("travar-tela", "Travar tela", "changes-prevent-symbolic", True, "Cobre a tela com uma mensagem e bloqueia teclado e mouse (não fecha nem minimiza nada)"),
     ("liberar-tela", "Liberar tela", "changes-allow-symbolic", False, "Tira o aviso e libera teclado e mouse"),
     ("reiniciar-veyon", "Reiniciar Veyon", "view-refresh-symbolic", False, "Reinicia só o Veyon para as telas voltarem a aparecer no programa"),
 ]
@@ -448,7 +448,7 @@ class Painel(Gtk.Application):
         d = Gtk.Window(title="Travar tela", transient_for=self.win, modal=True)
         d.set_default_size(460, 300)
         caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
-        caixa.append(Gtk.Label(label=f"Vai travar a tela de {escopo}.\nOs apps ficam minimizados (nada é fechado) e teclado e mouse são bloqueados.", xalign=0, wrap=True))
+        caixa.append(Gtk.Label(label=f"Vai travar a tela de {escopo}.\nNada é fechado nem minimizado: a tela só fica coberta pela mensagem e teclado e mouse são bloqueados.", xalign=0, wrap=True))
         caixa.append(Gtk.Label(label="Mensagem que aparece na tela dos alunos:", xalign=0))
         tv = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=6, bottom_margin=6, left_margin=6, right_margin=6)
         rol = Gtk.ScrolledWindow(); rol.set_child(tv); rol.set_vexpand(True); rol.set_min_content_height(110)
