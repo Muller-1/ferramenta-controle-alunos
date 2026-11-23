@@ -6,6 +6,9 @@ case "$a" in
   status) txt="" ;;
   *) txt="Executar '$a' em TODOS os computadores do laboratório?" ;;
 esac
-[[ -z "$txt" ]] || kdialog --title "Laboratório" --yesno "$txt" || exit 0
-if [[ "$a" == backup ]]; then out="$("$HOME/.local/bin/lab-backup" 2>&1 | tail -25)"; else out="$("$HOME/.local/bin/lab" "$a" todos 2>&1)"; fi
+[[ -z "$txt" || "$a" == travar-tela ]] || kdialog --title "Laboratório" --yesno "$txt" || exit 0
+if [[ "$a" == travar-tela ]]; then
+  msg="$(kdialog --title "Travar tela" --textinputbox "Mensagem que aparece na tela dos alunos (deixe em branco para a mensagem padrão):" "")" || exit 0
+  if [[ -n "${msg// /}" ]]; then out="$("$HOME/.local/bin/lab" travar-tela -m "$msg" todos 2>&1)"; else out="$("$HOME/.local/bin/lab" travar-tela todos 2>&1)"; fi
+elif [[ "$a" == backup ]]; then out="$("$HOME/.local/bin/lab-backup" 2>&1 | tail -25)"; else out="$("$HOME/.local/bin/lab" "$a" todos 2>&1)"; fi
 kdialog --title "Laboratório: $a" --msgbox "$out"

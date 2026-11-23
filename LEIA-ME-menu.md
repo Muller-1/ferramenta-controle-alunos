@@ -18,7 +18,7 @@ Obs.: o Painel é fixado no topo pelo arquivo do menu; se arrastar outro item pa
 [Desktop Entry]
 Type=Application
 Name=Fechar Roblox em todos
-Exec=/var/home/Muller/.local/bin/lab-gui fechar-roblox
+Exec=$HOME/.local/bin/lab-gui fechar-roblox
 Icon=process-stop-symbolic
 Terminal=false
 Categories=X-Laboratorio;

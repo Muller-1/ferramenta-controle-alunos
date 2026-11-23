@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # =============================================================================
-# Painel do laboratório — controla os PCs do laboratório (parecido com o Veyon)
+# Painel do laboratório — controla os PCs do laboratório de informática (parecido com o Veyon)
 #
 #   * Colunas = letras (A..F); linhas = números, com a fileira 1 EMBAIXO.
 #   * Clique seleciona um PC; Ctrl+clique soma/tira da seleção; CLIQUE E ARRASTE desenha
@@ -16,7 +16,7 @@
 # Uso:  lab-painel                 abre a janela
 #       lab-painel --captura X.png salva uma imagem da janela e fecha (teste)
 # =============================================================================
-import json, os, re, socket, subprocess, sys, threading, time, concurrent.futures
+import json, os, re, shlex, socket, subprocess, sys, threading, time, concurrent.futures
 import gi
 gi.require_version("Gtk", "4.0"); gi.require_version("Gdk", "4.0")
 from gi.repository import Gtk, Gdk, GLib, Gio
@@ -46,7 +46,7 @@ CUSTOM = [
     ("fechar-apps", "Fechar todos os apps", "window-close-symbolic", True, "Fecha tudo e mostra a área de trabalho"),
     ("bloquear-input", "Bloquear teclado e mouse", "input-keyboard-symbolic", True, "Desliga teclado e mouse dos alunos"),
     ("liberar-input", "Liberar teclado e mouse", "input-mouse-symbolic", False, "Religa teclado e mouse"),
-    ("travar-tela", "Travar tela", "changes-prevent-symbolic", True, "Fecha tudo, cobre a tela e bloqueia teclado e mouse"),
+    ("travar-tela", "Travar tela", "changes-prevent-symbolic", True, "Minimiza os apps, cobre a tela com uma mensagem e bloqueia teclado e mouse"),
     ("liberar-tela", "Liberar tela", "changes-allow-symbolic", False, "Tira o aviso e libera teclado e mouse"),
     ("reiniciar-veyon", "Reiniciar Veyon", "view-refresh-symbolic", False, "Reinicia só o Veyon para as telas voltarem a aparecer no programa"),
 ]
@@ -187,6 +187,12 @@ class Painel(Gtk.Application):
         self._pintar_todos(); self._repintar_sel()
         if os.environ.get("LAB_PAINEL_DEMO") == "2":
             GLib.timeout_add(500, lambda: (self._elastico(70, 360, 540, 150), False)[1])
+        if os.environ.get("LAB_PAINEL_DEMO") == "3":
+            try:
+                self._dialogo_mensagem("TODOS os 18 computadores", lambda m: print("MSG:", repr(m)))
+                print("DEMO3: diálogo abriu sem erro")
+            except Exception as e:
+                print("DEMO3 ERRO:", repr(e))
         try:
             self._menu(self.por_nome["b2"], 20, 20); self.executar("fechar-roblox", [self.por_nome["d3"]], False)
             print("DEMO: menu e execução sem erro")
@@ -428,11 +434,35 @@ class Painel(Gtk.Application):
         if not alvos_on:
             self._status("Nenhum dos PCs escolhidos está ligado."); return
         _id, texto, _i, confirma, dica = TODOS[cid]
+        if cid == "travar-tela":
+            esc = f"TODOS os {len(alvos_on)} computadores ligados" if todos else f"{len(alvos_on)} computador(es): " + ", ".join(p.nome.upper() for p in alvos_on)
+            return self._dialogo_mensagem(esc, lambda msg: self._rodar(cid, texto, alvos_on, pulados, msg))
         escopo = f"TODOS os {len(alvos_on)} computadores ligados" if todos else f"{len(alvos_on)} computador(es): " + ", ".join(p.nome.upper() for p in alvos_on)
         if confirma:
             self._confirmar(f"{texto}?", f"{dica}\n\nVai rodar em {escopo}.", lambda: self._rodar(cid, texto, alvos_on, pulados))
         else:
             self._rodar(cid, texto, alvos_on, pulados)
+
+    def _dialogo_mensagem(self, escopo, ok):
+        """Pergunta a mensagem da tela travada. Em branco = mensagem padrão."""
+        d = Gtk.Window(title="Travar tela", transient_for=self.win, modal=True)
+        d.set_default_size(460, 300)
+        caixa = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
+        caixa.append(Gtk.Label(label=f"Vai travar a tela de {escopo}.\nOs apps ficam minimizados (nada é fechado) e teclado e mouse são bloqueados.", xalign=0, wrap=True))
+        caixa.append(Gtk.Label(label="Mensagem que aparece na tela dos alunos:", xalign=0))
+        tv = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=6, bottom_margin=6, left_margin=6, right_margin=6)
+        rol = Gtk.ScrolledWindow(); rol.set_child(tv); rol.set_vexpand(True); rol.set_min_content_height(110)
+        caixa.append(rol)
+        caixa.append(Gtk.Label(label="Deixe em branco para a mensagem padrão: \"Tela bloqueada pelo professor — Aguarde, por favor\".", xalign=0, wrap=True))
+        botoes = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        cancelar = Gtk.Button(label="Cancelar"); travar = Gtk.Button(label="Travar tela"); travar.add_css_class("suggested-action")
+        botoes.append(cancelar); botoes.append(travar); caixa.append(botoes)
+        cancelar.connect("clicked", lambda _b: d.close())
+        def confirmar(_b):
+            b = tv.get_buffer(); msg = b.get_text(b.get_start_iter(), b.get_end_iter(), False).strip()
+            d.close(); ok(msg.replace("\n", "\\n"))     # quebras de linha viram \n (o aviso converte de volta)
+        travar.connect("clicked", confirmar)
+        d.set_child(caixa); d.present()
 
     def _confirmar(self, titulo, detalhe, ok):
         try:
@@ -448,14 +478,14 @@ class Painel(Gtk.Application):
         except AttributeError:
             ok()
 
-    def _rodar(self, cid, texto, alvos, pulados):
+    def _rodar(self, cid, texto, alvos, pulados, extra=""):
         self._log(f"▶ {texto}: {len(alvos)} PC(s)" + (f"  (ignorados, desligados: {', '.join(pulados)})" if pulados else ""))
         for p in alvos:
             self.ocupados.add(p.nome); self._pintar(p)
-            self.pool.submit(self._tarefa, cid, p)
+            self.pool.submit(self._tarefa, cid, p, extra)
 
-    def _tarefa(self, cid, p):
-        linha, ok = ssh_exec(p, f"sudo -n {LIB}/{cid}")
+    def _tarefa(self, cid, p, extra=""):
+        linha, ok = ssh_exec(p, f"sudo -n {LIB}/{cid}" + (" " + shlex.quote(extra) if extra else ""))
         p.t_estado = 0.0           # força reler o estado
         GLib.idle_add(self._fim_tarefa, p, linha, ok)
 
