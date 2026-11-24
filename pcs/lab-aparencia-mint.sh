@@ -187,6 +187,17 @@ PY
     bus_aluno xfconf-query -c xsettings -p /Net/ThemeName -s "$TEMA" 2>/dev/null || bus_aluno xfconf-query -c xsettings -p /Net/ThemeName -n -t string -s "$TEMA" || true
     bus_aluno xfconf-query -c xfwm4 -p /general/theme -s "$TEMA" 2>/dev/null || bus_aluno xfconf-query -c xfwm4 -p /general/theme -n -t string -s "$TEMA" || true
     sleep 1
+    # 1b) painel sem controle de volume: tira o plugin "pulseaudio" do painel (o volume é do professor, lab-audio-mint.sh)
+    ids="$(bus_aluno xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids 2>/dev/null | grep -E '^[0-9]+$' || true)"
+    pa=""
+    for i in $ids; do [[ "$(bus_aluno xfconf-query -c xfce4-panel -p "/plugins/plugin-$i" 2>/dev/null)" == pulseaudio ]] && pa="$i"; done
+    if [[ -n "$pa" ]]; then
+      args=(); for i in $ids; do [[ "$i" != "$pa" ]] && args+=(-t int -s "$i"); done
+      bus_aluno xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids "${args[@]}" 2>/dev/null || true
+      bus_aluno xfconf-query -c xfce4-panel -p "/plugins/plugin-$pa" -r -R 2>/dev/null || true
+      echo "    painel: plugin de volume (pulseaudio) removido"
+    fi
+    sleep 1
     # 2) para cada canal: retrato da configuração viva -> xml travado -> conferência numa sessão descartável
     for ch in xfce4-panel xsettings xfwm4; do
       if ! bus_aluno python3 -I "$HELP" dump "$ch" > "$WORK/$ch.vivo.json" 2>"$WORK/$ch.err"; then aviso "$ch: não consegui ler a configuração viva ($(tail -1 "$WORK/$ch.err"))"; continue; fi

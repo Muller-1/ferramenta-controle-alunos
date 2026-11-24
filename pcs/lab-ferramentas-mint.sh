@@ -13,6 +13,7 @@
 #   sair | entrar       aluno sai (sem login automático por 60 min) / aluno entra de novo
 #   estado              uma linha com o estado do PC (usada pelo painel)
 #   abrir-app NOME      abre um aplicativo pelo nome (primeiro resultado da busca nos aplicativos instalados)
+#   volume VALOR|mudo|som|status [--caixas|--sem-caixas]   volume dos PCs (o aluno não consegue mudar)
 #   reiniciar-veyon     reinicia só o Veyon (limpa x11vnc preso) para as telas voltarem a aparecer
 # Todos funcionam de três jeitos:
 #   a) pelo SSH do professor:  lab <acao> [todos|a1 b2 ...]   (comando "lab" do Bazzite)
@@ -26,7 +27,7 @@ trap 'echo "  [ERRO] falhou na linha $LINENO: $BASH_COMMAND (código $?)" >&2' E
 ALUNO="aluno"
 LIB="/usr/local/lib/lab"
 SUDOERS="/etc/sudoers.d/lab-comandos"
-CMDS=(fechar-roblox tirar-conta-roblox fechar-apps bloquear-input liberar-input travar-tela liberar-tela reiniciar desligar sair entrar estado reiniciar-veyon abrir-app)
+CMDS=(fechar-roblox tirar-conta-roblox fechar-apps bloquear-input liberar-input travar-tela liberar-tela reiniciar desligar sair entrar estado reiniciar-veyon abrir-app volume)
 ok()   { echo "  [ok] $*"; }
 info() { echo "==> $*"; }
 
@@ -398,6 +399,43 @@ source "$(dirname "$(readlink -f "$0")")/_comum"
 exec python3 "$(dirname "$(readlink -f "$0")")/abrir-app.py" "$@"
 EOF
 
+# ------------------------------------------------------------------------- volume
+cat > "$LIB/volume" <<'EOF'
+#!/usr/bin/env bash
+# volume VALOR (0-100) | mudo | som | status  [--caixas | --sem-caixas]
+# Define o volume do PC (o guarda lab-audio trava o aluno nesse valor). Ex.: volume 60 | volume mudo | volume 40 --caixas
+#   VALOR  volume de 0 a 100 (e liga o som)      mudo / som  silencia / volta o som no volume atual
+#   --caixas  libera os alto-falantes internos   --sem-caixas  só o fone toca (padrão)    status  mostra o estado
+CONF=/etc/lab-audio.conf
+ARGS=($*)                                   # aceita "60 --caixas" como um argumento só (vindo do painel)
+[[ ${#ARGS[@]} -gt 0 ]] || ARGS=(status)
+for a in "${ARGS[@]}"; do
+  [[ "$a" =~ ^([0-9]{1,3}|mudo|som|status|--caixas|--sem-caixas)$ ]] || { echo "$(hostname): argumento inválido '$a' (use: 0-100 | mudo | som | status | --caixas | --sem-caixas)"; exit 2; }
+  [[ "$a" =~ ^[0-9]+$ ]] && (( 10#$a > 100 )) && { echo "$(hostname): volume vai de 0 a 100"; exit 2; }
+done
+get() { grep -E "^$1=" "$CONF" 2>/dev/null | tail -1 | cut -d= -f2; }
+vol="$(get volume)"; vol="${vol:-50}"; mudo="$(get mudo)"; mudo="${mudo:-0}"; caixas="$(get caixas)"; caixas="${caixas:-0}"
+mexeu=0
+for a in "${ARGS[@]}"; do
+  case "$a" in
+    [0-9]*) vol=$((10#$a)); mudo=0; mexeu=1 ;;
+    mudo) mudo=1; mexeu=1 ;;
+    som) mudo=0; mexeu=1 ;;
+    --caixas) caixas=1; mexeu=1 ;;
+    --sem-caixas) caixas=0; mexeu=1 ;;
+  esac
+done
+if (( mexeu )); then
+  tmp="$(mktemp /etc/lab-audio.XXXXXX)"
+  printf '# Volume dos PCs do laboratório (mude pelo comando: lab volume 60 todos)\nvolume=%s\nmudo=%s\ncaixas=%s\n' "$vol" "$mudo" "$caixas" > "$tmp"
+  chmod 644 "$tmp"; mv "$tmp" "$CONF"
+  systemctl kill -s USR1 lab-audio.service 2>/dev/null || true
+  sleep 1.5
+fi
+vivo="$(XDG_RUNTIME_DIR=/run/user/$(id -u aluno) wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | sed 's/Volume: //')"
+echo "$(hostname): volume ${vol}%, mudo: $([[ $mudo == 1 ]] && echo sim || echo não), alto-falantes: $([[ $caixas == 1 ]] && echo liberados || echo mudos) | ao vivo: ${vivo:-sem sessão}"
+EOF
+
 # ------------------------------------------------------------------ reiniciar-veyon
 cat > "$LIB/reiniciar-veyon" <<'EOF'
 #!/usr/bin/env bash
@@ -425,7 +463,7 @@ for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chown root:root "$
 {
   echo "# Gerado por lab-ferramentas-mint.sh: admins rodam SÓ estas ferramentas sem senha, sem argumentos."
   for c in "${CMDS[@]}"; do
-    if [[ "$c" == travar-tela || "$c" == abrir-app ]]; then echo "%sudo ALL=(root) NOPASSWD: $LIB/$c"; else echo "%sudo ALL=(root) NOPASSWD: $LIB/$c \"\""; fi
+    if [[ "$c" == travar-tela || "$c" == abrir-app || "$c" == volume ]]; then echo "%sudo ALL=(root) NOPASSWD: $LIB/$c"; else echo "%sudo ALL=(root) NOPASSWD: $LIB/$c \"\""; fi
   done
 } > "$SUDOERS"
 chmod 440 "$SUDOERS"
