@@ -43,6 +43,7 @@ if [[ "${1:-}" == "--desfazer" ]]; then
         "$LIB/vigia" "$LIB/rede-prioridade-veyon" "$LIB/libreoffice-autosave" \
         /etc/systemd/logind.conf.d/10-lab-energia.conf /etc/dconf/db/local.d/10-lab-energia /etc/dconf/db/local.d/locks/10-lab-energia
   chattr -i /etc/libreoffice/registry/lab-paths.xcd 2>/dev/null; rm -f /etc/libreoffice/registry/lab-paths.xcd
+  rm -f /etc/polkit-1/rules.d/21-lab-sem-desligar.rules /etc/apt/apt.conf.d/99-lab-sem-reiniciar
   rm -f /etc/dconf/db/local.d/11-lab-sem-protetor /etc/dconf/db/local.d/locks/11-lab-sem-protetor /etc/xdg/autostart/lab-sem-protetor.desktop "$LIB/sem-protetor-xorg"
   for b in /usr/bin/light-locker /usr/bin/light-locker-command /usr/bin/light-locker-settings /usr/bin/xflock4; do
     if dpkg-statoverride --list "$b" >/dev/null 2>&1; then dpkg-statoverride --remove "$b"; chmod 755 "$b"; fi
@@ -63,6 +64,9 @@ cat > /etc/systemd/logind.conf.d/10-lab-energia.conf <<'EOF'
 # Gerado por lab-sistema-mint.sh
 [Login]
 IdleAction=ignore
+HandlePowerKey=ignore
+HandlePowerKeyLongPress=ignore
+HandleRebootKey=ignore
 HandleSuspendKey=ignore
 HandleHibernateKey=ignore
 HandleLidSwitch=ignore
@@ -82,9 +86,13 @@ sleep-inactive-battery-type='nothing'
 lid-close-ac-action='nothing'
 lid-close-battery-action='nothing'
 lid-close-suspend-with-external-monitor=false
+button-power='nothing'
+button-sleep='nothing'
+button-suspend='nothing'
+button-hibernate='nothing'
 EOF
   P=/org/cinnamon/settings-daemon/plugins/power
-  printf '%s\n' $P/sleep-inactive-ac-type $P/sleep-inactive-battery-type $P/lid-close-ac-action $P/lid-close-battery-action > /etc/dconf/db/local.d/locks/10-lab-energia
+  printf '%s\n' $P/sleep-inactive-ac-type $P/sleep-inactive-battery-type $P/lid-close-ac-action $P/lid-close-battery-action $P/button-power $P/button-sleep $P/button-suspend $P/button-hibernate > /etc/dconf/db/local.d/locks/10-lab-energia
   dconf update
   if [[ -S "/run/user/$UID_ALUNO/bus" ]]; then   # aplica já na sessão aberta (não reinicia nada)
     for k in sleep-inactive-ac-type sleep-inactive-battery-type lid-close-ac-action lid-close-battery-action; do
@@ -93,14 +101,14 @@ EOF
   fi
   ok "Cinnamon: suspender por inatividade = nunca (travado no dconf; apagar a tela continua igual)"
 fi
-XPM="/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml"
+for XPM in /etc/xdg/xdg-xfce/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml; do
 if [[ -f "$XPM" ]]; then
   python3 -I - "$XPM" <<'PY'
 import sys, xml.etree.ElementTree as ET
 p = sys.argv[1]
 t = ET.parse(p); root = t.getroot()
 base = [e for e in root.iter('property') if e.get('name') == 'xfce4-power-manager'][0]
-want = {'inactivity-on-ac': '14', 'inactivity-on-battery': '14', 'lid-action-on-ac': '0',
+want = {'power-button-action': '0', 'inactivity-on-ac': '14', 'inactivity-on-battery': '14', 'lid-action-on-ac': '0',
         'lid-action-on-battery': '0', 'sleep-button-action': '0', 'hibernate-button-action': '0'}
 for k, v in want.items():
     e = [x for x in base.findall('property') if x.get('name') == k]
@@ -113,9 +121,13 @@ PY
     for k in inactivity-on-ac inactivity-on-battery; do
       runuser -u "$ALUNO" -- env DBUS_SESSION_BUS_ADDRESS="$BUS" xfconf-query -c xfce4-power-manager -n -t uint -p "/xfce4-power-manager/$k" -s 14 2>/dev/null || true
     done
+    for k in power-button-action sleep-button-action hibernate-button-action lid-action-on-ac lid-action-on-battery; do
+      runuser -u "$ALUNO" -- env DBUS_SESSION_BUS_ADDRESS="$BUS" xfconf-query -c xfce4-power-manager -n -t uint -p "/xfce4-power-manager/$k" -s 0 2>/dev/null || true
+    done
   fi
-  ok "XFCE: 'colocar o sistema para dormir' = nunca (padrão do sistema e sessão aberta)"
+  ok "XFCE: 'colocar o sistema para dormir' = nunca e botão de ligar sem ação (padrão do sistema e sessão aberta)"
 fi
+done
 
 # ------------------------------------------- 1c. sem protetor de tela e sem tela de bloqueio
 info "1c) Sem protetor de tela nem bloqueio (fica aberto onde deixou)"
@@ -172,6 +184,25 @@ if command -v light-locker >/dev/null 2>&1 || command -v xflock4 >/dev/null 2>&1
   pkill -u "$ALUNO" -x light-locker 2>/dev/null || true
   ok "XFCE: tela de bloqueio (light-locker/xflock4) só para admins; o aluno não bloqueia nem cai em tela de bloqueio"
 fi
+
+# ---- 1d. o aluno não consegue desligar, reiniciar nem suspender o PC (nem por menu, comando ou botão)
+info "1d) Ninguém desliga o PC por engano: aluno sem permissão de desligar/reiniciar/suspender"
+install -d -m 755 /etc/polkit-1/rules.d
+cat > /etc/polkit-1/rules.d/21-lab-sem-desligar.rules <<'EOF'
+// Gerado por lab-sistema-mint.sh: a conta aluno não desliga, reinicia, suspende nem hiberna o PC.
+// (Admins e o Veyon do professor continuam podendo; ordens do tipo "lab desligar" rodam como root.)
+polkit.addRule(function(action, subject) {
+  if (subject.user == "aluno" &&
+      /^org\.freedesktop\.login1\.(power-off|reboot|halt|suspend|hibernate|hybrid-sleep|suspend-then-hibernate)/.test(action.id)) {
+    return polkit.Result.NO;
+  }
+});
+EOF
+chmod 644 /etc/polkit-1/rules.d/21-lab-sem-desligar.rules
+install -d -m 755 /etc/apt/apt.conf.d
+printf '// Gerado por lab-sistema-mint.sh: atualizações automáticas nunca reiniciam nem desligam o PC sozinhas\nUnattended-Upgrade::Automatic-Reboot "false";\n' > /etc/apt/apt.conf.d/99-lab-sem-reiniciar
+shutdown -c >/dev/null 2>&1 || true      # cancela qualquer desligamento agendado que tenha ficado pendente
+ok "polkit: aluno sem permissão de desligar/reiniciar/suspender; atualizações sem reinício automático; botão de ligar sem ação"
 
 # ------------------------------------------------------------ 2. veyon prioridade
 info "2) Veyon: prioridade máxima (CPU, disco, memória e rede), imutável"
