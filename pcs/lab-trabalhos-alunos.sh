@@ -9,6 +9,7 @@
 #
 # Uso (como admin, com sudo):
 #   sudo bash lab-trabalhos-alunos.sh servidor  --cred ARQUIVO   # só no a1
+#   sudo bash lab-trabalhos-alunos.sh guarda                      # só a guarda da raiz (arquivo solto -> quarentena), no a1
 #   sudo bash lab-trabalhos-alunos.sh cliente   --cred ARQUIVO   # em todos (a1 também)
 #   sudo bash lab-trabalhos-alunos.sh desfazer-cliente
 #   sudo bash lab-trabalhos-alunos.sh desfazer-servidor
@@ -58,6 +59,45 @@ para_montagem() {
   umount -l "$MNT" >/dev/null 2>&1 || true
 }
 
+guarda_pasta() {
+  info "Raiz da pasta pública: só pastas (arquivo solto vai para a quarentena)"
+  if ! command -v inotifywait >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive; apt-get install -y inotify-tools >/dev/null 2>&1 || aviso "não consegui instalar inotify-tools"
+  fi
+  install -d -m 755 -o root -g root "$DADOS_SRV/Material"        # material do professor: o aluno só lê
+  install -d -m 700 -o root -g root /srv/trabalhos-alunos-soltos   # quarentena (fora da pasta compartilhada)
+  install -d -m 755 /usr/local/lib/lab
+  chattr -i /usr/local/lib/lab/pasta-guarda 2>/dev/null || true
+  cat > /usr/local/lib/lab/pasta-guarda <<'EOF'
+#!/usr/bin/env bash
+# Mantém a raiz de trabalhos-alunos só com PASTAS: todo ARQUIVO solto que aparecer é movido na hora para a
+# quarentena /srv/trabalhos-alunos-soltos (o aluno cria a pasta dele e salva lá dentro).
+DIR=/srv/trabalhos-alunos/dados; Q=/srv/trabalhos-alunos-soltos
+mover() {
+  local f="$1"
+  [[ -f "$DIR/$f" && ! -L "$DIR/$f" ]] || return 0
+  mv -f -- "$DIR/$f" "$Q/$(date +%F_%H%M%S)_${f//\//_}" 2>/dev/null && logger -t lab-pasta "arquivo solto movido para a quarentena: $f"
+}
+varre() { local x; for x in "$DIR"/* "$DIR"/.[!.]*; do [[ -e "$x" ]] && mover "$(basename "$x")"; done; }
+varre
+inotifywait -m -q -e create -e moved_to -e close_write --format '%f' "$DIR" | while read -r f; do mover "$f"; done
+EOF
+  chmod 755 /usr/local/lib/lab/pasta-guarda; chattr +i /usr/local/lib/lab/pasta-guarda
+  cat > /etc/systemd/system/lab-pasta-guarda.service <<'EOF'
+[Unit]
+Description=Guarda da pasta pública (só pastas na raiz)
+After=smbd.service
+[Service]
+ExecStart=/usr/local/lib/lab/pasta-guarda
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload; systemctl enable --now lab-pasta-guarda.service >/dev/null 2>&1; systemctl restart lab-pasta-guarda.service
+  ok "guarda ativo: arquivos soltos na raiz vão para /srv/trabalhos-alunos-soltos; 'Material' é só leitura"
+}
+
 # =============================================================== SERVIDOR =====
 servidor() {
   precisa_cred
@@ -85,6 +125,8 @@ servidor() {
   install -d -m 2770 -o "$USUARIO_SMB" -g "$USUARIO_SMB" "$DADOS_SRV"
   chattr +i "$BASE_SRV"
   ok "$BASE_SRV imutável (ninguém, nem root, apaga/renomeia 'dados' sem chattr -i)"
+
+  guarda_pasta
 
   info "Configuração do Samba"
   [[ -f /etc/samba/smb.conf.orig-lab ]] || cp -a /etc/samba/smb.conf /etc/samba/smb.conf.orig-lab
@@ -230,6 +272,7 @@ desfazer_cliente() {
 
 desfazer_servidor() {
   info "Desfazendo servidor (os dados em $DADOS_SRV NÃO são apagados)"
+  systemctl disable --now lab-pasta-guarda.service >/dev/null 2>&1 || true
   [[ -f /etc/samba/smb.conf.orig-lab ]] && cp -a /etc/samba/smb.conf.orig-lab /etc/samba/smb.conf
   systemctl restart smbd || true
   chattr -i "$BASE_SRV" 2>/dev/null || true
@@ -238,6 +281,7 @@ desfazer_servidor() {
 
 case "$MODO" in
   servidor) servidor ;;
+  guarda) guarda_pasta ;;
   cliente) cliente ;;
   desfazer-cliente) desfazer_cliente ;;
   desfazer-servidor) desfazer_servidor ;;

@@ -14,6 +14,10 @@
 #   estado              uma linha com o estado do PC (usada pelo painel)
 #   abrir-app NOME      abre um aplicativo pelo nome (primeiro resultado da busca nos aplicativos instalados)
 #   volume VALOR|mudo|som|status [--caixas|--sem-caixas]   volume dos PCs (o aluno não consegue mudar)
+#   abrir-site URL      abre o link no Brave de todos
+#   mensagem SEG TEXTO  faixa de mensagem na tela dos alunos por SEG segundos (não trava nada)
+#   internet cortar|liberar|status   corta/volta a internet do aluno (a rede do lab continua)
+#   receber-arquivo area|publico ARQ   (usado por 'lab enviar') coloca o arquivo na área de trabalho do aluno ou na pasta Material
 #   reiniciar-veyon     reinicia só o Veyon (limpa x11vnc preso) para as telas voltarem a aparecer
 # Todos funcionam de três jeitos:
 #   a) pelo SSH do professor:  lab <acao> [todos|a1 b2 ...]   (comando "lab" do Bazzite)
@@ -27,7 +31,7 @@ trap 'echo "  [ERRO] falhou na linha $LINENO: $BASH_COMMAND (código $?)" >&2' E
 ALUNO="aluno"
 LIB="/usr/local/lib/lab"
 SUDOERS="/etc/sudoers.d/lab-comandos"
-CMDS=(fechar-roblox tirar-conta-roblox fechar-apps bloquear-input liberar-input travar-tela liberar-tela reiniciar desligar sair entrar estado reiniciar-veyon abrir-app volume)
+CMDS=(fechar-roblox tirar-conta-roblox fechar-apps bloquear-input liberar-input travar-tela liberar-tela reiniciar desligar sair entrar estado reiniciar-veyon abrir-app volume abrir-site mensagem internet receber-arquivo)
 ok()   { echo "  [ok] $*"; }
 info() { echo "==> $*"; }
 
@@ -36,12 +40,12 @@ echo "Máquina: $(hostname)"
 
 if [[ "${1:-}" == "--desfazer" ]]; then
   rm -f "$SUDOERS"
-  for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chattr -i "$LIB/$c" 2>/dev/null || true; rm -f "$LIB/$c"; done
+  for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py mensagem-rapida.py; do chattr -i "$LIB/$c" 2>/dev/null || true; rm -f "$LIB/$c"; done
   ok "ferramentas e sudoers removidos"; exit 0
 fi
 
 install -d -m 755 "$LIB"
-for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chattr -i "$LIB/$c" 2>/dev/null || true; done
+for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py mensagem-rapida.py; do chattr -i "$LIB/$c" 2>/dev/null || true; done
 
 # ------------------------------------------------------------------- comum -----
 cat > "$LIB/_comum" <<'EOF'
@@ -296,7 +300,8 @@ if [[ -n "$tela" ]]; then est=aluno; else est=login; [[ -f /run/lab-vigia/sem-au
 tr=0; ip=0
 [[ -f "/run/user/$U/lab-tela-travada" ]] && tr=1
 [[ -f "/run/user/$U/lab-input-bloqueado" ]] && ip=1
-echo "estado=$est tela=${tela:--} travada=$tr input=$ip"
+net=0; nft list table inet lab_internet >/dev/null 2>&1 && net=1
+echo "estado=$est tela=${tela:--} travada=$tr input=$ip net=$net"
 EOF
 
 # ---------------------------------------------------------------------- abrir-app
@@ -436,6 +441,117 @@ vivo="$(XDG_RUNTIME_DIR=/run/user/$(id -u aluno) wpctl get-volume @DEFAULT_AUDIO
 echo "$(hostname): volume ${vol}%, mudo: $([[ $mudo == 1 ]] && echo sim || echo não), alto-falantes: $([[ $caixas == 1 ]] && echo liberados || echo mudos) | ao vivo: ${vivo:-sem sessão}"
 EOF
 
+# ------------------------------------------------------------------------ abrir-site
+cat > "$LIB/abrir-site" <<'EOF'
+#!/usr/bin/env bash
+# abrir-site ENDEREÇO: abre o link no Brave da tela do aluno (aba nova). Sem http(s):// usa https://.
+source "$(dirname "$(readlink -f "$0")")/_comum"
+url="$*"
+[[ -n "${url// /}" ]] || { echo "$(hostname): diga o endereço (ex.: abrir-site khanacademy.org)"; exit 2; }
+[[ "$url" =~ ^https?:// ]] || url="https://$url"
+case "$url" in *[!A-Za-z0-9._~:/?#@%+=,*"&"!-]*) echo "$(hostname): endereço inválido (só letras, números e . _ ~ : / ? # @ % + = , * & ! -)"; exit 2 ;; esac
+setsid nohup brave-browser "$url" >/dev/null 2>&1 < /dev/null &
+echo "$(hostname): abrindo $url no Brave"
+EOF
+
+# ------------------------------------------------------------------------- mensagem
+cat > "$LIB/mensagem-rapida.py" <<'EOF'
+#!/usr/bin/env python3
+# mensagem-rapida.py SEGUNDOS TEXTO: faixa de aviso no topo da tela, por cima de tudo, sem pegar clique nem teclado.
+import sys, gi
+gi.require_version('Gtk', '3.0'); gi.require_version('Gdk', '3.0')
+from gi.repository import Gtk, Gdk, GLib
+seg = max(1, min(600, int(sys.argv[1])))
+texto = sys.argv[2].strip().replace('\\n', '\n')[:300]
+tam = 40 if len(texto) <= 50 else (32 if len(texto) <= 110 else 26)
+css = Gtk.CssProvider()
+css.load_from_data(('.faixa { background-color: rgba(11,42,74,0.96); border-radius: 18px; border: 3px solid #ffffff; } .faixa label { color: white; font-size: %dpx; font-weight: bold; }' % tam).encode())
+Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+w = Gtk.Window(type=Gtk.WindowType.POPUP)           # override-redirect: fica por cima de tudo
+vis = w.get_screen().get_rgba_visual()
+if vis: w.set_visual(vis)
+w.set_app_paintable(True); w.set_keep_above(True)
+lab = Gtk.Label(label=texto); lab.set_line_wrap(True); lab.set_max_width_chars(44); lab.set_justify(Gtk.Justification.CENTER)
+lab.set_margin_top(26); lab.set_margin_bottom(26); lab.set_margin_start(44); lab.set_margin_end(44)
+caixa = Gtk.Box(); caixa.get_style_context().add_class('faixa'); caixa.add(lab); w.add(caixa); w.show_all()
+disp = Gdk.Display.get_default(); mon = disp.get_primary_monitor() or disp.get_monitor(0); g = mon.get_geometry()
+w.resize(1, 1)                                   # encolhe para o tamanho do texto
+largura = w.get_preferred_width()[1]; altura = w.get_preferred_height_for_width(largura)[1]
+w.resize(largura, altura)
+w.move(g.x + (g.width - largura) // 2, g.y + int(g.height * 0.08))
+try:                                                # clique atravessa a faixa
+    import cairo
+    w.get_window().input_shape_combine_region(cairo.Region(), 0, 0)
+except Exception:
+    pass
+GLib.timeout_add_seconds(seg, Gtk.main_quit)
+Gtk.main()
+EOF
+cat > "$LIB/mensagem" <<'EOF'
+#!/usr/bin/env bash
+# mensagem SEGUNDOS TEXTO...: mostra uma faixa de mensagem na tela do aluno (não trava nada). Ex.: mensagem 15 "Faltam 5 minutos"
+source "$(dirname "$(readlink -f "$0")")/_comum"
+ARGS=("$@"); [[ ${#ARGS[@]} -eq 1 ]] && read -r -a ARGS <<< "$1"     # aceita "15 texto" como um argumento só
+seg="${ARGS[0]:-}"; texto="${ARGS[*]:1}"
+[[ "$seg" =~ ^[0-9]{1,3}$ ]] && (( 10#$seg >= 1 && 10#$seg <= 600 )) && [[ -n "${texto// /}" ]] || { echo "$(hostname): uso: mensagem SEGUNDOS TEXTO"; exit 2; }
+pkill -u "$(id -u)" -f '[m]ensagem-rapida.py' 2>/dev/null || true
+setsid nohup python3 "$(dirname "$(readlink -f "$0")")/mensagem-rapida.py" "$((10#$seg))" "$texto" >/dev/null 2>&1 < /dev/null &
+echo "$(hostname): mensagem na tela por ${seg}s"
+EOF
+
+# ------------------------------------------------------------------------- internet
+cat > "$LIB/internet" <<'EOF'
+#!/usr/bin/env bash
+# internet cortar|liberar|status: corta a internet DO ALUNO (a rede do laboratório, a pasta pública, o Veyon e o SSH continuam).
+# Usa uma tabela nftables própria (lab_internet); reiniciar o PC também libera.
+acao="${1:-status}"
+U="$(id -u aluno)"
+LAN="$(ip -4 route show scope link 2>/dev/null | awk '!/default/ && /\//{print $1; exit}')"; LAN="${LAN:-192.168.0.0/24}"
+existe() { nft list table inet lab_internet >/dev/null 2>&1; }
+case "$acao" in
+  cortar)
+    existe && nft delete table inet lab_internet
+    nft -f - <<NFT
+table inet lab_internet {
+  chain saida {
+    type filter hook output priority 0; policy accept;
+    meta skuid $U oifname != "lo" ip daddr != $LAN reject with icmp type admin-prohibited
+    meta skuid $U oifname != "lo" ip6 daddr != { fe80::/10, ff00::/8 } reject with icmpv6 type admin-prohibited
+  }
+}
+NFT
+    echo "$(hostname): internet do aluno CORTADA (rede do lab continua)" ;;
+  liberar) existe && nft delete table inet lab_internet; echo "$(hostname): internet do aluno liberada" ;;
+  status) if existe; then echo "$(hostname): internet cortada"; else echo "$(hostname): internet liberada"; fi ;;
+  *) echo "$(hostname): uso: internet cortar|liberar|status"; exit 2 ;;
+esac
+EOF
+
+# ------------------------------------------------------------------ receber-arquivo
+cat > "$LIB/receber-arquivo" <<'EOF'
+#!/usr/bin/env bash
+# receber-arquivo area|publico /tmp/lab-envio-XXXX/arquivo : (usado por "lab enviar") coloca o arquivo enviado pelo professor
+#   area    -> Área de trabalho do aluno (cada PC)      publico -> pasta Material da pasta pública (só no a1)
+destino="${1:-}"; origem="${2:-}"      # dois argumentos (o caminho pode ter espaços)
+[[ "$destino" == area || "$destino" == publico ]] || { echo "$(hostname): destino inválido"; exit 2; }
+[[ "$origem" =~ ^/tmp/lab-envio-[A-Za-z0-9]+/[^/]+$ && -f "$origem" && ! -L "$origem" ]] || { echo "$(hostname): origem inválida"; exit 2; }
+nome="$(basename "$origem")"; nome="${nome//[^A-Za-z0-9._ À-ÿ()+-]/_}"
+(( $(stat -c %s "$origem") <= 209715200 )) || { echo "$(hostname): arquivo maior que 200 MB"; exit 2; }
+if [[ "$destino" == area ]]; then
+  pasta="$(runuser -u aluno -- env HOME=/home/aluno xdg-user-dir DESKTOP 2>/dev/null)"; [[ -d "$pasta" ]] || pasta="/home/aluno/Desktop"
+  install -d -o aluno -g aluno "$pasta"
+  install -o aluno -g aluno -m 644 "$origem" "$pasta/$nome"
+  echo "$(hostname): arquivo '$nome' na área de trabalho do aluno"
+else
+  pasta="/srv/trabalhos-alunos/dados/Material"
+  [[ -d /srv/trabalhos-alunos/dados ]] || { echo "$(hostname): este PC não é o servidor da pasta pública"; exit 2; }
+  install -d -m 755 -o root -g root "$pasta"
+  install -o root -g root -m 644 "$origem" "$pasta/$nome"
+  echo "$(hostname): arquivo '$nome' na pasta Material (somente leitura para os alunos)"
+fi
+rm -f "$origem"; rmdir "$(dirname "$origem")" 2>/dev/null || true
+EOF
+
 # ------------------------------------------------------------------ reiniciar-veyon
 cat > "$LIB/reiniciar-veyon" <<'EOF'
 #!/usr/bin/env bash
@@ -456,20 +572,20 @@ fi
 EOF
 
 for c in "${CMDS[@]}"; do chmod 755 "$LIB/$c"; done
-chmod 644 "$LIB/_comum"; chmod 755 "$LIB/overlay-tela.py" "$LIB/abrir-app.py"
-for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chown root:root "$LIB/$c"; done
+chmod 644 "$LIB/_comum"; chmod 755 "$LIB/overlay-tela.py" "$LIB/abrir-app.py" "$LIB/mensagem-rapida.py"
+for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py mensagem-rapida.py; do chown root:root "$LIB/$c"; done
 
 # --------------------------------------------------------------------- sudoers
 {
   echo "# Gerado por lab-ferramentas-mint.sh: admins rodam SÓ estas ferramentas sem senha, sem argumentos."
   for c in "${CMDS[@]}"; do
-    if [[ "$c" == travar-tela || "$c" == abrir-app || "$c" == volume ]]; then echo "%sudo ALL=(root) NOPASSWD: $LIB/$c"; else echo "%sudo ALL=(root) NOPASSWD: $LIB/$c \"\""; fi
+    if [[ "$c" == travar-tela || "$c" == abrir-app || "$c" == volume || "$c" == abrir-site || "$c" == mensagem || "$c" == internet || "$c" == receber-arquivo ]]; then echo "%sudo ALL=(root) NOPASSWD: $LIB/$c"; else echo "%sudo ALL=(root) NOPASSWD: $LIB/$c \"\""; fi
   done
 } > "$SUDOERS"
 chmod 440 "$SUDOERS"
 visudo -cf "$SUDOERS" >/dev/null
 ok "sudoers: $SUDOERS (sem senha só para ${CMDS[*]})"
 
-for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py; do chattr +i "$LIB/$c"; done
+for c in "${CMDS[@]}" _comum overlay-tela.py abrir-app.py mensagem-rapida.py; do chattr +i "$LIB/$c"; done
 ok "ferramentas instaladas em $LIB (imutáveis)"
 echo "Uso no PC: sudo $LIB/fechar-apps   |   do Bazzite: lab fechar-apps todos"
