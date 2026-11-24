@@ -53,12 +53,12 @@ Será pedida a senha do `sudo` dos administradores; ela é enviada pelo SSH e **
 
 Comandos: `fechar-roblox`, `tirar-conta-roblox`, `fechar-apps`, `bloquear-input`, `liberar-input`, `travar-tela`
 (cobre a tela com uma mensagem à sua escolha, sem fechar nem minimizar nada; solta sozinho em 90 min), `liberar-tela`,
-`abrir-app` (abre um aplicativo pelo nome na tela dos alunos), `reiniciar`, `desligar`, `sair`, `entrar`, `reiniciar-veyon`.
+`abrir-app` (abre um aplicativo pelo nome na tela dos alunos), `abrir-site`, `mensagem` (faixa na tela), `internet` (cortar/liberar), `volume`, `enviar` (arquivo para os alunos), `agenda` (ações programadas), `reiniciar`, `desligar`, `sair`, `entrar`, `reiniciar-veyon`.
 No terminal: `lab travar-tela -m "Volto em 5 minutos"`, `lab abrir-app -a writer a1 b2`.
 
 ## Estrutura do repositório
 - `labpainel/`: o painel e a linha de comando (Python + Tkinter).
-- `pcs/`: scripts que rodam **nos PCs dos alunos**, como administrador (`lab-ferramentas-mint.sh` é o que o painel implanta; os demais — energia/Veyon, aparência, travas, pasta pública — são opcionais e específicos de um laboratório Mint).
+- `pcs/`: scripts que rodam **nos PCs dos alunos** (energia sem desligar nunca, segurança/bloqueios, perfil limpo a cada boot, Wake-on-LAN, pasta pública), como administrador (`lab-ferramentas-mint.sh` é o que o painel implanta; os demais — energia/Veyon, aparência, travas, pasta pública — são opcionais e específicos de um laboratório Mint).
 - `packaging/`, `.github/workflows/`: geração do `.deb` e do `.exe`. `tests/`: testes.
 - Os IPs de exemplo (`192.168.0.x`) são fictícios: ajuste para a sua rede.
 
