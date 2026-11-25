@@ -6,7 +6,7 @@ Baixa SÓ de fontes oficiais e confere o hash de cada arquivo:
 Resultado: PACOTE/ com runtime/ libraries/ assets/ versions/ mods/ versao.json  (~800 MB).
 Depois o instalar-minecraft-mint.sh copia esse pacote pela rede local para /opt/lab-minecraft dos PCs.
 
-Uso: python3 preparar-pacote.py PACOTE [--versao 26.3] [--cache PASTA_.minecraft_antiga]
+Uso: python3 preparar-pacote.py PACOTE [--versao 26.3] [--cache PASTA_.minecraft_antiga] [--servidor IP_DO_PROFESSOR]
 """
 import argparse, hashlib, json, os, shutil, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -68,6 +68,8 @@ def main():
     ap.add_argument("pacote")
     ap.add_argument("--versao", default="26.3")
     ap.add_argument("--cache", help="pasta .minecraft antiga para reaproveitar arquivos (só se o hash bater)")
+    ap.add_argument("--servidor", help="IP do Servidor do Professor (aparece no Multijogador dos alunos)")
+    ap.add_argument("--servidor-nome", default="Servidor do Professor")
     a = ap.parse_args()
     P = os.path.abspath(a.pacote)
     C = a.cache
@@ -167,6 +169,9 @@ def main():
     shutil.copyfile(f"{aqui}/jogar-minecraft.py", f"{P}/jogar")
     os.chmod(f"{P}/jogar", 0o755)
     shutil.copyfile(f"{aqui}/options-padrao.txt", f"{P}/options-padrao.txt")
+    if a.servidor:
+        with open(f"{P}/servidor.txt", "w") as f:
+            f.write(f"{a.servidor}|{a.servidor_nome}\n")
     json.dump({"minecraft": a.versao, "fabric": fid, "java": comp, "mods": mods_info, "assetIndex": ai["id"]},
               open(f"{P}/versao.json", "w"), indent=1)
     print("pronto:", cont, "| versão:", fid, "| mods:", " ".join(mods_info))

@@ -9,10 +9,10 @@
   para não travar o PC nem o Veyon. Se passar do limite, só o jogo fecha.
 - Se o professor bloquear (lab minecraft bloquear), mostra um aviso e não abre.
 """
-import hashlib, json, os, re, socket, subprocess, sys, uuid
+import hashlib, json, os, re, socket, struct, subprocess, sys, uuid
 
-BASE = "/opt/lab-minecraft"
-JOGO = "/var/lib/lab-minecraft/jogo"
+BASE = os.environ.get("LAB_MC_BASE", "/opt/lab-minecraft")        # o professor usa outra pasta no PC dele
+JOGO = os.environ.get("LAB_MC_JOGO", "/var/lib/lab-minecraft/jogo")
 BLOQ = "/etc/lab/minecraft-bloqueado"
 TITULO = "Minecraft"
 
@@ -84,6 +84,27 @@ def uuid_offline(nome):  # igual ao UUID.nameUUIDFromBytes do Java ("OfflinePlay
     return str(uuid.UUID(bytes=bytes(b)))
 
 
+def nbt_str(s):
+    b = s.encode("utf-8")
+    return struct.pack(">H", len(b)) + b
+
+
+def garantir_servidor(jogo):
+    """Põe o "Servidor do Professor" na lista Multijogador (servers.dat) se ainda não estiver."""
+    cfg = f"{BASE}/servidor.txt"  # "IP|Nome", gerado pelo preparar-pacote.py --servidor
+    if not os.path.exists(cfg):
+        return
+    ip, _, nome = open(cfg).read().strip().partition("|")
+    dat = f"{jogo}/servers.dat"
+    if os.path.exists(dat) and ip.encode() in open(dat, "rb").read():
+        return
+    srv = (b"\x08" + nbt_str("name") + nbt_str(nome or "Servidor do Professor")
+           + b"\x08" + nbt_str("ip") + nbt_str(ip) + b"\x00")
+    data = b"\x0a" + nbt_str("") + b"\x09" + nbt_str("servers") + b"\x0a" + struct.pack(">i", 1) + srv + b"\x00"
+    with open(dat, "wb") as f:
+        f.write(data)
+
+
 def main():
     if os.path.exists(BLOQ):
         aviso("O Minecraft está fechado agora.\nO professor libera quando for a hora. 🙂")
@@ -126,6 +147,10 @@ def main():
     if not os.path.exists(opts) and os.path.exists(f"{BASE}/options-padrao.txt"):
         with open(f"{BASE}/options-padrao.txt") as s, open(opts, "w") as d:
             d.write(s.read())
+    try:
+        garantir_servidor(JOGO)
+    except OSError:
+        pass
     nat = f"{JOGO}/.nativos"
     os.makedirs(f"{JOGO}/logs", exist_ok=True)
 
@@ -167,8 +192,9 @@ def main():
     if subprocess.run(["systemd-run", "--user", "--scope", "--quiet", "true"], capture_output=True).returncode == 0:
         pre = ["systemd-run", "--user", "--scope", "--quiet", f"--unit=lab-minecraft-{os.getpid()}",
                "-p", "MemoryHigh=3G", "-p", "MemoryMax=3700M", "-p", "CPUWeight=60", "--"]
-    if os.path.exists("/usr/games/gamemoderun"):
-        pre += ["/usr/games/gamemoderun"]
+    gm = next((p for p in ("/usr/games/gamemoderun", "/usr/bin/gamemoderun") if os.path.exists(p)), None)
+    if gm:
+        pre += [gm]
     pre += ["nice", "-n", "5"]
     os.chdir(JOGO)
     log = open(f"{JOGO}/logs/lancador.log", "w")
