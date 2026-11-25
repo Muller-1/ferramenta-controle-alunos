@@ -1,2 +1,3 @@
 # Compilar (precisa de JDK 25):
 # podman run --rm -v "$PWD":/w:z docker.io/library/eclipse-temurin:25-jdk bash -c "cd /w && mkdir -p out && javac --release 25 -d out *.java && jar cfm agente.jar manifest.txt -C out ."
+# lab-op.jar: jar cfm lab-op.jar manifest-op.txt -C out LabOp.class -C out Anexar.class
