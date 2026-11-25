@@ -11,7 +11,7 @@ Uso: python3 preparar-pacote.py PACOTE [--versao 26.3] [--cache PASTA_.minecraft
 import argparse, hashlib, json, os, shutil, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-MODS = ["sodium", "lithium", "ferrite-core", "immediatelyfast", "entityculling", "fabric-api"]
+MODS = ["sodium", "lithium", "ferrite-core", "immediatelyfast", "entityculling", "fabric-api", "lplm"]  # lplm: mundo em LAN aceita mais de 8
 UA = {"User-Agent": "lab-minecraft-preparar/1.0"}
 
 
@@ -169,6 +169,7 @@ def main():
     shutil.copyfile(f"{aqui}/jogar-minecraft.py", f"{P}/jogar")
     os.chmod(f"{P}/jogar", 0o755)
     shutil.copyfile(f"{aqui}/options-padrao.txt", f"{P}/options-padrao.txt")
+    shutil.copyfile(f"{aqui}/agente/agente.jar", f"{P}/agente.jar")  # lab minecraft limite (muda o limite com o mundo aberto)
     if a.servidor:
         with open(f"{P}/servidor.txt", "w") as f:
             f.write(f"{a.servidor}|{a.servidor_nome}\n")

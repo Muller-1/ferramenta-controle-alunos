@@ -149,6 +149,11 @@ def main():
             d.write(s.read())
     try:
         garantir_servidor(JOGO)
+        lplm = f"{JOGO}/config/lplm.json"  # mundo aberto em LAN aceita até 25 (o padrão do jogo é 8)
+        if not os.path.exists(lplm):
+            os.makedirs(f"{JOGO}/config", exist_ok=True)
+            with open(lplm, "w") as f:
+                f.write('{\n  "maxPlayers": 25\n}\n')
     except OSError:
         pass
     nat = f"{JOGO}/.nativos"

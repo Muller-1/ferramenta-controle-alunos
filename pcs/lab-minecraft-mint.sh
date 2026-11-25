@@ -53,7 +53,10 @@ SRC="${1:-$ADM_HOME/lab-minecraft-pacote}"
 
 info "1) Jogo em $OPT (só leitura)"
 if pgrep -u $ALUNO -f "$OPT/runtime/" >/dev/null; then
-  echo "  O Minecraft está aberto agora: não atualizo os arquivos do jogo (rode de novo depois)."
+  echo "  O Minecraft está aberto agora: atualizo só abridor, mods e agente (o resto, rode de novo depois)."
+  install -o root -g root -m 755 "$SRC/jogar" "$OPT/jogar"
+  for f in agente.jar servidor.txt versao.json; do [[ -f "$SRC/$f" ]] && install -o root -g root -m 644 "$SRC/$f" "$OPT/$f"; done
+  rsync -a --delete --chown=root:root --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$SRC/mods/" "$OPT/mods/"
 else
   install -d -m 755 "$OPT"
   nice -n 19 ionice -c3 rsync -a --delete --chown=root:root --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r "$SRC/" "$OPT/"
@@ -100,10 +103,11 @@ install -d -m 755 "$LIB" /etc/lab
 chattr -i "$FER" 2>/dev/null || true
 cat > "$FER" <<'EOF'
 #!/usr/bin/env bash
-# minecraft fechar|bloquear|liberar|status — controle do Minecraft dos alunos (roda como root pelo sudo).
+# minecraft fechar|bloquear|liberar|limite|status — controle do Minecraft dos alunos (roda como root pelo sudo).
 #   fechar    fecha o jogo do jeito normal (salva o mundo); se não fechar em 20 s, força
 #   bloquear  fecha e impede de abrir de novo (o aluno vê um aviso)
 #   liberar   permite abrir de novo
+#   limite    mundo aberto em LAN passa a aceitar 25 jogadores na hora (sem fechar)
 #   status    aberto/fechado, apelido, bloqueado
 ALUNO=aluno; BLOQ=/etc/lab/minecraft-bloqueado; OPT=/opt/lab-minecraft
 U="$(id -u $ALUNO)"; H="$(hostname)"
@@ -122,18 +126,25 @@ case "${1:-status}" in
   fechar)   echo "$H: Minecraft $(fechar)" ;;
   bloquear) touch "$BLOQ"; echo "$H: Minecraft bloqueado, $(fechar)" ;;
   liberar)  rm -f "$BLOQ"; echo "$H: Minecraft liberado" ;;
+  limite)   # mundo aberto em LAN aceita até 25, sem reiniciar (agente Java muda o limite fixo de 8)
+            p="$(pids)"; [[ -n "$p" ]] || { echo "$H: Minecraft fechado (nada a fazer)"; exit 0; }
+            [[ -f $OPT/agente.jar ]] || { echo "$H: falta $OPT/agente.jar (reimplante)"; exit 1; }
+            J=$(ls $OPT/runtime/*/bin/java | head -1); cd /var/lib/lab-minecraft/jogo || exit 1
+            for x in $p; do timeout 30 runuser -u $ALUNO -- "$J" --add-modules jdk.attach -cp $OPT/agente.jar Anexar "$x" $OPT/agente.jar 25 >/dev/null 2>&1; done
+            sleep 1; r=$(grep -h "lab-agente" logs/latest.log 2>/dev/null | tail -1 | sed 's/.*\[lab-agente\] //')
+            echo "$H: Minecraft ${r:-sem resposta do jogo}" ;;
   status)   a="fechado"; [[ -n "$(pids)" ]] && a="ABERTO ($(cat /var/lib/lab-minecraft/jogo/apelido.txt 2>/dev/null))"
             b="liberado"; [[ -e "$BLOQ" ]] && b="BLOQUEADO"
             echo "$H: Minecraft $a, $b" ;;
-  *) echo "uso: minecraft fechar|bloquear|liberar|status"; exit 2 ;;
+  *) echo "uso: minecraft fechar|bloquear|liberar|limite|status"; exit 2 ;;
 esac
 EOF
 chown root:root "$FER"; chmod 755 "$FER"; chattr +i "$FER"
 {
   echo "# Gerado por lab-minecraft-mint.sh: admins controlam o Minecraft sem senha (só estes argumentos)."
-  for a in fechar bloquear liberar status; do echo "%sudo ALL=(root) NOPASSWD: $FER $a"; done
+  for a in fechar bloquear liberar limite status; do echo "%sudo ALL=(root) NOPASSWD: $FER $a"; done
 } > "$SUDOERS"
 chmod 440 "$SUDOERS"; visudo -cf "$SUDOERS" >/dev/null
-ok "sudo $FER fechar|bloquear|liberar|status"
+ok "sudo $FER fechar|bloquear|liberar|limite|status"
 
 echo "Pronto. Desfazer: sudo bash $0 --desfazer"
