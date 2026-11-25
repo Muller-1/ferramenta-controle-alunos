@@ -45,7 +45,7 @@ logado() { loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$ALUNO" '$
 limpa_base() {   # tira da FOTO o que é do aluno (a foto fica "de fábrica"); o /home/aluno em uso não é tocado
   local d
   for d in Documentos Documents Downloads Imagens Vídeos Músicas Modelos Público Desktop "Área de trabalho"; do
-    [[ -d "$BASE/$d" ]] && find "$BASE/$d" -mindepth 1 ! -type l -delete 2>/dev/null
+    [[ -d "$BASE/$d" ]] && find "$BASE/$d" -mindepth 1 ! -type l ! -name '*.desktop' -delete 2>/dev/null
   done
   local sd="$BASE/.var/app/org.vinegarhq.Sober/data/sober"
   rm -f "$sd/cookies" "$sd/appData/LocalStorage/appStorage.json" "$sd/appData/LocalStorage/memProfStorage3.json"      # sem conta do Roblox
