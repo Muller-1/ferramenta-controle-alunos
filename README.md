@@ -46,7 +46,7 @@ Será pedida a senha do `sudo` dos administradores; ela é enviada pelo SSH e **
 ## Uso
 
 - Clique seleciona um PC; **Ctrl+clique** soma; **arraste** para selecionar vários; clique na letra/número seleciona a coluna/fileira; `Ctrl+A` todos; `Esc` limpa.
-- **Botão direito** num PC: comandos só para os selecionados. **Barra de cima:** comandos em todos (ou nos selecionados).
+- **Menus de cima** (*Computador*, *Tela e teclado*, *Programas*): agem nos PCs selecionados ou, sem seleção, em todos (o texto ao lado diz qual). **Botão direito** num PC: os mesmos menus, só para os selecionados.
 - Cores: verde = aluno logado, amarelo = tela de login, laranja = aluno saiu, vermelho = tela travada, cinza = desligado.
 - Terminal (Linux): `lab <ação> [todos | a1 b2 …]`, `lab status`, `lab implantar`.
 - Teste sem PCs: `LAB_PAINEL_DEMO=1 lab-painel`.
