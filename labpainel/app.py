@@ -27,6 +27,13 @@ CUSTOM = [
 ]
 TODOS = {c[0]: c for c in BASICOS + CUSTOM}
 
+# Barra de cima e menu do botão direito: ações agrupadas (None = separador)
+GRUPOS = [
+    ("Computador", ["iniciar", "reiniciar", "desligar", None, "entrar", "sair", None, "reiniciar-veyon"]),
+    ("Tela e teclado", ["travar-tela", "liberar-tela", None, "bloquear-input", "liberar-input"]),
+    ("Programas", ["abrir-app", "fechar-apps", None, "fechar-roblox", "tirar-conta-roblox"]),
+]
+
 COR = {"aluno": "#bfe8c9", "login": "#ffe3a3", "saiu": "#ffd2a8", "sem": "#d6ecf8", "travada": "#f5b5b5",
        "off": "#d9dce1", "nossh": "#eceef1"}
 TX, TX_OFF = "#2b2f36", "#7a808a"
@@ -86,18 +93,18 @@ class Painel:
 
         self.barra = tk.Frame(self.root, bg="#ffffff", padx=6, pady=4)
         self.barra.pack(fill="x")
-        self.botoes = []
-        for cid, texto, _c, dica in BASICOS + CUSTOM:
-            b = ttk.Button(self.barra, text=texto, command=lambda c=cid: self.executar(c, self._alvos_sel() or self.pcs, True))
-            b.dica = dica
-            self.botoes.append(b)
-        self.barra.bind("<Configure>", self._refluir)
+        for titulo, ids in GRUPOS:
+            mb = ttk.Menubutton(self.barra, text=titulo)
+            mb["menu"] = self._menu_grupo(mb, ids, lambda: self._alvos_sel() or self.pcs, True)
+            mb.pack(side="left", padx=2)
+        self.l_alvo = tk.Label(self.barra, bg="#ffffff", fg=TX_OFF, font=("TkDefaultFont", 9))
+        self.l_alvo.pack(side="left", padx=10)
 
         rodape = tk.Frame(self.root, bg="#ffffff")
         rodape.pack(side="bottom", fill="x")
         self.l_status = tk.Label(rodape, anchor="w", bg="#ffffff", fg=TX, font=("TkDefaultFont", 9), padx=10, pady=4)
         self.l_status.pack(fill="x", side="bottom")
-        self.log = ScrolledText(rodape, height=7, state="disabled", font=("TkFixedFont", 9), bg="#ffffff", fg=TX, wrap="word")
+        self.log = ScrolledText(rodape, height=4, state="disabled", font=("TkFixedFont", 9), bg="#ffffff", fg=TX, wrap="word")
         self.log.pack(fill="x", side="bottom")
 
         self.canvas = tk.Canvas(self.root, bg="#eef1f5", highlightthickness=0)
@@ -109,18 +116,15 @@ class Painel:
         self.canvas.bind("<Configure>", lambda e: self._desenhar_grade())
         self.banda = self.inicio = None
 
-    def _refluir(self, _e=None):
-        larg = max(self.barra.winfo_width(), 1)
-        x = linha = col = 0
-        for b in self.botoes:
-            b.grid_forget()
-        for b in self.botoes:
-            w = b.winfo_reqwidth() + 4
-            if x + w > larg and col:
-                linha, x, col = linha + 1, 0, 0
-            b.grid(row=linha, column=col, padx=2, pady=2)
-            x += w
-            col += 1
+    def _menu_grupo(self, pai, ids, alvos, todos):
+        """Menu com as ações `ids`; `alvos()` diz em quais PCs rodar no momento do clique."""
+        m = tk.Menu(pai, tearoff=0)
+        for cid in ids:
+            if cid is None:
+                m.add_separator()
+            else:
+                m.add_command(label=TODOS[cid][1], command=lambda c=cid: self.executar(c, alvos(), todos))
+        return m
 
     # ------------------------------------------------------------------ grade
     def _geometria(self):
@@ -255,11 +259,8 @@ class Painel:
         m = tk.Menu(self.root, tearoff=0)
         m.add_command(label="Selecionados: " + ", ".join(p.nome.upper() for p in alvos), state="disabled")
         m.add_separator()
-        for cid, texto, _c, _d in BASICOS:
-            m.add_command(label=texto, command=lambda c=cid: self.executar(c, alvos, False))
-        m.add_separator()
-        for cid, texto, _c, _d in CUSTOM:
-            m.add_command(label=texto, command=lambda c=cid: self.executar(c, alvos, False))
+        for titulo, ids in GRUPOS:
+            m.add_cascade(label=titulo, menu=self._menu_grupo(m, ids, lambda: alvos, False))
         if len(alvos) == 1 and alvos[0].ip:
             m.add_separator()
             m.add_command(label="Abrir terminal (SSH)", command=lambda: self._terminal(alvos[0]))
@@ -427,6 +428,9 @@ class Painel:
             c.itemconfigure(t2, text=texto, fill=fg)
             c.itemconfigure(t3, text="⌨ bloqueado" if (p.online and p.input and not p.travada) else "", fill=fg)
         n = len(self.sel)
+        alvo = f"Ações em: {n} selecionado(s)" if n else "Ações em: todos os PCs"
+        if self.l_alvo.cget("text") != alvo:
+            self.l_alvo.config(text=alvo)
         if n:
             self._status(f"{n} selecionado(s): " + ", ".join(sorted(self.sel)))
         else:
